@@ -12,9 +12,11 @@
 - [x] 1.3 Implement health route, Typer help, basic stdout/file logging, `Dockerfile` health check.
 - [x] 1.4 Update `openspec/config.yaml` test command/testing runner to `uv run pytest`.
 - [x] 2.1 (PR2A split) Add `agh/common/ids.py`, `validation.py`, `repo_url.py`, `pack_manifest.py`, `checksums.py` and unit tests for prefixed IDs, email, slug/SemVer/latest handling, URL normalization, manifest validation, and managed payload hashes.
-- [x] PR2B-1 partial of 2.2: Add SQLite connection helper, versioned SQL migration, and migration idempotency/schema constraint tests. The 2.2 checkbox remains open in `tasks.md` per split-slice instruction.
+- [x] PR2B-1 partial of 2.2: Add SQLite connection helper, versioned SQL migration, and migration idempotency/schema constraint tests; PR3A later closed the parent-controlled checkbox once the wording was fully satisfied.
 - [x] 2.3 (PR2B-2 split) Add `agh/server/auth.py`, bootstrap startup after migrations, hashed Bearer token verification, `/api/v1/me`, and `$AGH_DATA_DIR/secrets/initial_owner_token` with tests for no token logging and no re-bootstrap.
 - [x] 2.4 (PR2B-3 split) Add `agh/cli/config.py`, `agh login`, `agh config show`, validated `/api/v1/me` login, atomic restricted config writes, invalid-login preservation, and polished no-arg/top-level help.
+- [x] 2.2 (PR3A administrative closeout) Mark DB/migration task complete because the existing merged schema/migration work covers users, tokens, projects, memberships, packs, versions, assignments, `schema_migrations`, and SQLite idempotency tests.
+- [x] 3.1 (PR3A split) Add server user CRUD and token rotate/reset routes with role enforcement and sole-owner protection tests.
 
 ## Files Changed (PR2A)
 
@@ -63,6 +65,17 @@
 | `openspec/changes/bootstrap-agent-guidance-hub/tasks.md` | Modified | Marked task 2.4 complete only |
 | `openspec/changes/bootstrap-agent-guidance-hub/apply-progress.md` | Modified | Recorded cumulative PR2B-3 progress and validation |
 | `sdd/apply-pr2b3-result.md` | Created | Standard SDD apply result envelope for PR2B-3 |
+
+## Files Changed (PR3A)
+
+| File | Action | Notes |
+|------|--------|-------|
+| `agh/server/routes/__init__.py` | Created | Route package marker for server route modules |
+| `agh/server/routes/users.py` | Created | Authenticated user list/create/update/deactivate routes plus token rotate/reset, SQLite direct access, role checks, hashed token storage, and sole-owner protection |
+| `agh/server/app.py` | Modified | Wires user routes under `/api/v1` |
+| `tests/test_user_routes.py` | Created | FastAPI integration tests for owner/admin/member permissions, email validation, no token hash leakage, token revoke/issue lifecycle, inactive/delete behavior, and sole-owner protection |
+| `openspec/changes/bootstrap-agent-guidance-hub/tasks.md` | Modified | Marks 3.1 complete and administratively closes 2.2 with rationale |
+| `openspec/changes/bootstrap-agent-guidance-hub/apply-progress.md` | Modified | Records cumulative PR3A progress and validation |
 
 ## Validation
 
@@ -135,15 +148,30 @@ uv run pytest tests/test_cli_login.py -q
 
 uv run pytest -q
 # 47 passed, 1 warning in 2.95s (after help behavior review fix)
+
+uv run pytest tests/test_user_routes.py -q
+# RED before implementation: 7 failed with 404 Not Found for missing `/api/v1/users` routes
+
+uv run pytest tests/test_user_routes.py -q
+# 7 passed, 1 warning in 0.40s
+
+uv run pytest -q
+# 54 passed, 1 warning in 3.12s
+
+uv run pytest tests/test_user_routes.py -q
+# 9 passed, 1 warning in 0.46s (after PR3A review fixes)
+
+uv run pytest -q
+# 56 passed, 1 warning in 3.16s (after PR3A review fixes)
 ```
 
 ## TDD Evidence
 
-Strict TDD not active (`openspec/config.yaml: strict_tdd: false`). Tests were written before PR2B-1 production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.db'` before implementation. PR2B-2 tests were also written before production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.auth'` before implementation. PR2B-3 tests were written before production code where practical; the focused RED run failed because `login`/`config show` were not implemented and no-arg help exited 2.
+Strict TDD not active (`openspec/config.yaml: strict_tdd: false`). Tests were written before PR2B-1 production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.db'` before implementation. PR2B-2 tests were also written before production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.auth'` before implementation. PR2B-3 tests were written before production code where practical; the focused RED run failed because `login`/`config show` were not implemented and no-arg help exited 2. PR3A tests were written before production code where practical; the focused RED run failed with 404s for the missing `/api/v1/users` routes before implementation.
 
 ## Deviations from Design
 
-None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite directly, stores only `tokens.token_hash`, runs migrations before bootstrap, and writes the one bootstrap plaintext token under `$AGH_DATA_DIR/secrets/initial_owner_token` so Docker's `AGH_DATA_DIR=/data` yields the specified `/data/secrets/initial_owner_token` path. PR2B-3 uses stdlib `urllib.request` instead of adding an HTTP dependency, stores the default config at `~/.config/agh/config.toml`, supports `AGH_CONFIG_FILE` for test isolation/overrides, and never adds a reveal-secret flag.
+None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite directly, stores only `tokens.token_hash`, runs migrations before bootstrap, and writes the one bootstrap plaintext token under `$AGH_DATA_DIR/secrets/initial_owner_token` so Docker's `AGH_DATA_DIR=/data` yields the specified `/data/secrets/initial_owner_token` path. PR2B-3 uses stdlib `urllib.request` instead of adding an HTTP dependency, stores the default config at `~/.config/agh/config.toml`, supports `AGH_CONFIG_FILE` for test isolation/overrides, and never adds a reveal-secret flag. PR3A keeps create-user token issuance out of `POST /users` because specs only require plaintext issuance for rotate/reset; `DELETE /users/{id}` deactivates (`active=0`) because the schema has no `deleted_at` column and auth already denies inactive users.
 
 ## Issues Found / Review Fixes
 
@@ -159,14 +187,19 @@ None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite dire
 - Fresh final review found concurrent first-start migrations could race before auth bootstrap. Fixed `run_migrations()` to serialize applied-version check/apply/record with `BEGIN IMMEDIATE` and added concurrent migration startup coverage.
 - PR2B-3 security review found `urllib` followed redirects with the Bearer token and timeout errors could escape as unhandled exceptions. Fixed login validation with a no-redirect opener, explicit redirect rejection, timeout wrapping, and tests for redirect/token non-forwarding and clean timeout failures.
 - PR2B-3 help review found disabling root help broke command-specific `--help`. Fixed the custom Typer group to return the AGH manual for group help/unknown commands while preserving generated help for concrete commands such as `agh login --help` and `agh config show --help`.
+- PR3A decision: admin token rotate/reset is treated as user administration, so admins may rotate/reset `member` tokens only; owners may rotate/reset any user token. This matches the prompt's admin-can-manage-members-only constraint.
+- PR3A implementation uses simple FastAPI `HTTPException.detail` strings rather than the design's future `{error:{code,message}}` helper because existing auth routes currently use detail strings and the prompt requested simple errors for now.
+- PR3A fresh review found unauthorized member target routes leaked user existence, owner-protection checks were not transactionally safe, and email canonicalization was case-sensitive. Fixed by checking admin/owner permission before target lookup, wrapping target read/check/write in `BEGIN IMMEDIATE`, lowercasing stored emails (including bootstrap owner), and adding tests for non-enumeration, case-insensitive duplicates, and concurrent owner demotions.
 
 ## Remaining Tasks
 
-- [ ] 2.2 parent-controlled completion remains open in `tasks.md` after PR2B-1 split note.
-- [ ] 3.1–6.4 unchanged
+- [ ] 3.2 Add project CRUD, duplicate normalized URL `409`, developer membership, and access checks in `agh/server/routes/projects.py`; test inactive project denial.
+- [ ] 3.3 Add Typer `user`, `token`, and `project` command groups in `agh/cli/main.py` mapping to `/api/v1` and masking secrets in config output.
+- [ ] 3.4 Add `agh/cli/workspace_sync.py` for git remote lookup, no `--project`, `.agh/project.toml`, `--remote`, and `--force` link-only behavior; test with temp git repos.
+- [ ] 4.1–6.4 unchanged.
 
 ## Workload / PR Boundary
 
-- **Mode**: stacked PR slice (PR2B-3) targeting current `main` after merged PR #5, per prompt boundary
-- **Boundary**: CLI login/config only: local config helper, `agh login`, `agh config show`, `/api/v1/me` validation client, help polish, and tests. No user/token/project command groups, token rotate/reset, sync, pull, pack commands, workspace behavior, agent integrations, web UI, OAuth/SSO, or commits.
-- **Review impact**: focused CLI slice with one new helper module, one command wiring update, and one focused test file; intended as one stacked work unit under the resolved auto-chain strategy
+- **Mode**: stacked PR slice (PR3A) targeting current `main` after merged PR #6, per prompt boundary
+- **Boundary**: Server user administration and token lifecycle routes only: `agh/server/routes/users.py`, app wiring, role/owner-protection tests, and administrative 2.2 closeout. No CLI `agh user`/`agh token`/`agh project`, project APIs, sync, packs, pull, workspace behavior, agent integrations, web UI, OAuth/SSO, or commits.
+- **Review impact**: focused server API slice with one route module and one focused test file; intended as one stacked work unit under the resolved auto-chain strategy

@@ -54,7 +54,7 @@ def bootstrap_initial_owner(
     """
     root = Path(data_dir) if data_dir is not None else get_data_dir()
     database_path = Path(db_path) if db_path is not None else get_database_path(root)
-    email = os.environ.get("AGH_BOOTSTRAP_OWNER_EMAIL", "").strip()
+    email = os.environ.get("AGH_BOOTSTRAP_OWNER_EMAIL", "").strip().lower()
 
     connection = connect_database(database_path)
     try:
