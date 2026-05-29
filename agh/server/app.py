@@ -6,7 +6,8 @@ import logging
 import sys
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from agh.server.db import get_data_dir, get_database_path, run_migrations
 
@@ -68,6 +69,10 @@ def create_app() -> FastAPI:
     run_migrations(db_path)
 
     from agh.server.auth import CurrentUser, bootstrap_initial_owner, get_current_user
+    from agh.server.routes.packs import (
+        MAX_PACK_PUBLISH_BODY_BYTES,
+        router as packs_router,
+    )
     from agh.server.routes.projects import router as projects_router
     from agh.server.routes.users import router as users_router
 
@@ -75,8 +80,23 @@ def create_app() -> FastAPI:
 
     application = FastAPI(title="Agent Guidance Hub", version="0.1.0")
     application.state.db_path = db_path
+
+    @application.middleware("http")
+    async def reject_oversized_pack_publish(request: Request, call_next):  # type: ignore[no-untyped-def]
+        if request.method == "POST" and request.url.path == "/api/v1/packs":
+            content_length = request.headers.get("content-length")
+            if (
+                content_length is not None
+                and int(content_length) > MAX_PACK_PUBLISH_BODY_BYTES
+            ):
+                return JSONResponse(
+                    {"detail": "pack publish payload is too large"}, status_code=413
+                )
+        return await call_next(request)
+
     application.include_router(users_router, prefix="/api/v1")
     application.include_router(projects_router, prefix="/api/v1")
+    application.include_router(packs_router, prefix="/api/v1")
 
     @application.get("/api/v1/health")
     def health() -> dict[str, str | int]:
