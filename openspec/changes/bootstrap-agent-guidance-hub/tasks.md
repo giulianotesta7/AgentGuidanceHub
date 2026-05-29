@@ -39,14 +39,15 @@ Chain strategy: stacked-to-main
 ## Phase 2: Common Validation, Storage, Auth Bootstrap
 
 - [x] 2.1 Add `agh/common/ids.py`, `validation.py`, `repo_url.py`, `pack_manifest.py`, `checksums.py` with unit tests for prefixed IDs, email, slug/SemVer/latest, URL normalization, and managed payload hashes.
-- [ ] 2.2 Add `agh/server/db.py` and `agh/server/migrations/*.sql` for users, tokens, projects, memberships, packs, versions, assignments, and `schema_migrations`; test migration idempotency on SQLite.
-  - PR2B-1 partial: SQLite connection helper, initial migration, and idempotency/schema tests implemented; checkbox remains open for parent-controlled Phase 2 completion.
+- [x] 2.2 Add `agh/server/db.py` and `agh/server/migrations/*.sql` for users, tokens, projects, memberships, packs, versions, assignments, and `schema_migrations`; test migration idempotency on SQLite.
+  - PR2B-1 partial: SQLite connection helper, initial migration, and idempotency/schema tests implemented.
+  - PR3A administrative closeout: wording is fully satisfied by merged DB/migration work and existing `tests/test_db_migrations.py` coverage.
 - [x] 2.3 Add `agh/server/auth.py`, bootstrap startup, hashed Bearer tokens, `/api/v1/me`, and secret write to `/data/secrets/initial_owner_token`; test no token logging and no re-bootstrap.
 - [x] 2.4 Add `agh/cli/config.py` and `login` command storing `~/.config/agh/config.toml` mode `0600` after validating `/api/v1/me`; test invalid login preserves prior config.
 
 ## Phase 3: Users, Projects, and Sync
 
-- [ ] 3.1 Add user CRUD/token rotate/reset routes in `agh/server/routes/users.py` plus role/owner-protection tests.
+- [x] 3.1 Add user CRUD/token rotate/reset routes in `agh/server/routes/users.py` plus role/owner-protection tests.
 - [ ] 3.2 Add project CRUD, duplicate normalized URL `409`, developer membership, and access checks in `agh/server/routes/projects.py`; test inactive project denial.
 - [ ] 3.3 Add Typer `user`, `token`, and `project` command groups in `agh/cli/main.py` mapping to `/api/v1` and masking secrets in config output.
 - [ ] 3.4 Add `agh/cli/workspace_sync.py` for git remote lookup, no `--project`, `.agh/project.toml`, `--remote`, and `--force` link-only behavior; test with temp git repos.
