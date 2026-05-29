@@ -129,6 +129,12 @@ uv run pytest tests/test_cli_login.py -q
 
 uv run pytest -q
 # 46 passed, 1 warning in 3.05s (after redirect/timeout review fixes)
+
+uv run pytest tests/test_cli_login.py -q
+# 9 passed in 2.64s (after help behavior review fix)
+
+uv run pytest -q
+# 47 passed, 1 warning in 2.95s (after help behavior review fix)
 ```
 
 ## TDD Evidence
@@ -152,6 +158,7 @@ None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite dire
 - Fresh security review found auth lookup scanned all active tokens and overstated constant-time verification. Fixed by querying the unique `token_hash` directly, retaining `hmac.compare_digest` confirmation, and adding revoked-token coverage.
 - Fresh final review found concurrent first-start migrations could race before auth bootstrap. Fixed `run_migrations()` to serialize applied-version check/apply/record with `BEGIN IMMEDIATE` and added concurrent migration startup coverage.
 - PR2B-3 security review found `urllib` followed redirects with the Bearer token and timeout errors could escape as unhandled exceptions. Fixed login validation with a no-redirect opener, explicit redirect rejection, timeout wrapping, and tests for redirect/token non-forwarding and clean timeout failures.
+- PR2B-3 help review found disabling root help broke command-specific `--help`. Fixed the custom Typer group to return the AGH manual for group help/unknown commands while preserving generated help for concrete commands such as `agh login --help` and `agh config show --help`.
 
 ## Remaining Tasks
 

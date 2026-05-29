@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
+from typer.core import TyperGroup
 
 from agh.cli.config import (
     AghConfig,
@@ -34,12 +35,34 @@ Arguments:
   Run `agh <command> --help` for command-specific options and arguments.
 """
 
+
+class AghHelpGroup(TyperGroup):
+    """Typer group that shows AGH's command overview for help/unknown commands."""
+
+    def get_help(self, ctx: Any) -> str:
+        return APP_HELP
+
+    def resolve_command(self, ctx: Any, args: list[str]) -> Any:
+        if args:
+            command_name = args[0]
+            command = self.get_command(ctx, command_name)
+            if command is None and not command_name.startswith("-"):
+                typer.echo(APP_HELP)
+                raise typer.Exit(0)
+        return super().resolve_command(ctx, args)
+
+
 app = typer.Typer(
     name="agh",
+    cls=AghHelpGroup,
     help="Agent Guidance Hub — manage and distribute agent guidance packs.",
     no_args_is_help=False,
 )
-config_app = typer.Typer(help="Inspect local AGH CLI configuration.")
+config_app = typer.Typer(
+    cls=AghHelpGroup,
+    help="Inspect local AGH CLI configuration.",
+    no_args_is_help=False,
+)
 app.add_typer(config_app, name="config")
 
 
@@ -91,6 +114,14 @@ def login(
     typer.echo(
         f"Logged in to {instance_url} as {email}. Config saved to {get_config_path()}."
     )
+
+
+@config_app.callback(invoke_without_command=True)
+def config_main(ctx: typer.Context) -> None:
+    """Local AGH CLI configuration commands."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(APP_HELP)
+        raise typer.Exit(0)
 
 
 @config_app.command("show", help="Show local AGH config with the token masked.")

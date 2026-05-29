@@ -293,9 +293,23 @@ def test_top_level_help_lists_login_config_flags_and_arguments() -> None:
 
     no_args = runner.invoke(cli_app, [])
     help_result = runner.invoke(cli_app, ["--help"])
+    invalid_command = runner.invoke(cli_app, ["wrong-command"])
+    config_no_args = runner.invoke(cli_app, ["config"])
+    config_help = runner.invoke(cli_app, ["config", "--help"])
+    config_invalid_command = runner.invoke(cli_app, ["config", "wrong-command"])
 
     assert no_args.exit_code == 0
-    for output in (no_args.stdout, help_result.stdout):
+    assert help_result.exit_code == 0
+    assert invalid_command.exit_code == 0
+    assert config_no_args.exit_code == 0
+    assert config_help.exit_code == 0
+    assert config_invalid_command.exit_code == 0
+    assert help_result.stdout == no_args.stdout
+    assert invalid_command.stdout == no_args.stdout
+    assert config_no_args.stdout == no_args.stdout
+    assert config_help.stdout == no_args.stdout
+    assert config_invalid_command.stdout == no_args.stdout
+    for output in (no_args.stdout, help_result.stdout, config_no_args.stdout):
         assert "Agent Guidance Hub" in output
         assert "Usage" in output
         assert "Commands" in output
@@ -303,3 +317,17 @@ def test_top_level_help_lists_login_config_flags_and_arguments() -> None:
         assert "config" in output
         assert "--help" in output
         assert "Arguments" in output or "Options" in output
+
+
+def test_command_specific_help_still_works() -> None:
+    runner = CliRunner()
+
+    login_help = runner.invoke(cli_app, ["login", "--help"])
+    config_show_help = runner.invoke(cli_app, ["config", "show", "--help"])
+
+    assert login_help.exit_code == 0
+    assert "--url" in login_help.stdout
+    assert "--email" in login_help.stdout
+    assert "--token" in login_help.stdout
+    assert config_show_help.exit_code == 0
+    assert "Show local AGH config" in config_show_help.stdout
