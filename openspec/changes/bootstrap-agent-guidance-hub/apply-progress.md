@@ -23,6 +23,7 @@
 - [x] 4.1 (PR4A split) Add filesystem pack storage plus server pack publish/list/file routes with manifest, instruction source, skill layout, immutability, auth, and path safety tests.
 - [x] 4.2 (PR4B split) Add server project-pack assignment routes with concrete/latest version refs, highest-SemVer latest resolution, ordering, soft deactivation, and access-control tests.
 - [x] 4.3 (PR4C split) Add project pull-manifest route with active assignment ordering, latest resolution, artifact metadata, download URLs, checksums, and access-control tests.
+- [x] 4.4 (PR4D split) Add CLI pack publish/list and project pack assignment commands, with local manifest validation errors exiting `2`.
 
 ## Files Changed (PR2A)
 
@@ -145,6 +146,17 @@
 | `openspec/changes/bootstrap-agent-guidance-hub/tasks.md` | Modified | Marks task 4.3 complete only. |
 | `openspec/changes/bootstrap-agent-guidance-hub/apply-progress.md` | Modified | Records cumulative PR4C progress and validation. |
 | `sdd/apply-pr4c-result.md` | Generated local artifact | Standard SDD apply result envelope for PR4C; intentionally ignored by `.gitignore` under `sdd/`. |
+
+## Files Changed (PR4D)
+
+| File | Action | Notes |
+|------|--------|-------|
+| `agh/cli/pack_publish.py` | Created | Validates local pack directories and builds the JSON file-map publish payload while refusing missing manifest/instructions, invalid skills, non-text files, and symlinked paths. |
+| `agh/cli/main.py` | Modified | Adds `agh pack list`, `agh pack publish PATH`, and `agh project pack list/add/update/remove` commands mapped to existing pack and project assignment APIs. |
+| `tests/test_cli_pack_commands.py` | Created | Focused CLI tests for pack publish/list mapping, local validation exit `2`, symlink refusal, project assignment command mapping, help discoverability, and secret non-disclosure. |
+| `openspec/changes/bootstrap-agent-guidance-hub/tasks.md` | Modified | Marks task 4.4 complete only. |
+| `openspec/changes/bootstrap-agent-guidance-hub/apply-progress.md` | Modified | Records cumulative PR4D progress and validation. |
+| `sdd/apply-pr4d-result.md` | Generated local artifact | Standard SDD apply result envelope for PR4D; intentionally ignored by `.gitignore` under `sdd/`. |
 
 ## Validation
 
@@ -373,6 +385,63 @@ uv run pytest -q
 
 git diff --check
 # passed
+
+uv run pytest tests/test_cli_pack_commands.py -q
+# 4 passed in 1.72s
+
+uv run pytest tests/test_cli_pack_commands.py tests/test_cli_admin_commands.py -q
+# 8 passed in 3.63s
+
+uv run pytest -q
+# 90 passed, 1 warning in 11.31s
+
+git diff --check
+# passed
+
+uv run pytest tests/test_cli_pack_commands.py -q
+# 8 passed in 3.75s (after PR4D review fixes)
+
+uv run pytest -q
+# 94 passed, 1 warning in 13.52s (after PR4D review fixes)
+
+git diff --check
+# passed
+
+uv run pytest tests/test_cli_pack_commands.py -q
+# 10 passed in 4.72s (after PR4D second review fixes)
+
+uv run pytest -q
+# 96 passed, 1 warning in 14.22s (after PR4D second review fixes)
+
+git diff --check
+# passed
+
+uv run pytest tests/test_cli_pack_commands.py -q
+# 7 passed in 3.25s (after PR4D review fixes)
+
+uv run pytest -q
+# 93 passed, 1 warning in 13.19s (after PR4D review fixes)
+
+git diff --check
+# passed
+
+uv run pytest tests/test_cli_pack_commands.py -q
+# 10 passed in 4.71s (after PR4D second review fixes)
+
+uv run pytest -q
+# 96 passed, 1 warning in 14.05s (after PR4D second review fixes)
+
+git diff --check
+# passed
+
+uv run pytest tests/test_cli_pack_commands.py -q
+# 11 passed in 5.21s (after PR4D third review fixes)
+
+uv run pytest -q
+# 97 passed, 1 warning in 14.28s (after PR4D third review fixes)
+
+git diff --check
+# passed
 ```
 
 ## TDD Evidence
@@ -417,6 +486,9 @@ None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite dire
 - PR4A re-review found pack limits still ran after creating the packs root and chunked/no-Content-Length bodies could be parsed before caps. Moved payload validation before filesystem setup and changed `POST /packs` to stream/read the request body with a hard byte cap before JSON/Pydantic parsing; added regression tests for no-filesystem-write and streamed oversized body.
 - PR4A second re-review found the streamed body cap extended the bytearray before checking chunk size, allowing an oversized single chunk allocation. Fixed the stream loop to check `len(body) + len(chunk)` before `extend()` and changed the regression to send one oversized chunk.
 - PR4B fresh review found the approved route contract in `design.md` still described an older `PUT/DELETE /projects/{id}/packs/{assignment_id}` shape while implementation uses collection create/list (`GET/POST /projects/{id}/packs`) plus item update/delete (`PATCH/DELETE /projects/{id}/packs/{assignment_id}`). Updated the design route map to match the implemented and tested API shape because assignment creation does not know `assignment_id` ahead of time and partial updates are modeled as `PATCH`.
+- PR4D fresh/security review found local pack publish validation read symlinked `agh.pack.toml` before rejection, allowed symlinked instruction directories to pass local validation, let binary manifests escape without exit code 2, lacked local file-count/path/size caps, and included unexpected hidden files like `.env`. Fixed validation to reject all symlinks before manifest reads, require real instruction/skill files, wrap Unicode errors, enforce local caps before reading/posting, and allow only `agh.pack.toml`, instruction files, and `skills/<slug>/SKILL.md`; added regression tests.
+- PR4D second security review found `agh.pack.toml` was still parsed before size caps and symlinked parent path components could be resolved before validation. Fixed pack root resolution to reject symlinks in any path component, moved file reading/cap enforcement before manifest parsing, and added oversized-manifest and symlinked-parent regressions.
+- PR4D third security review found symlink rejection and file collection still used unbounded recursive tree walks before caps. Replaced recursive `rglob()` traversal with bounded, schema-aware streaming collection over only `agh.pack.toml`, `instructions/{AGENTS.md,CLAUDE.md}`, and `skills/<slug>/SKILL.md`; added too-many-files regression coverage.
 
 ## Remaining Tasks
 
@@ -425,11 +497,11 @@ None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite dire
 - [x] 4.1 Add filesystem pack storage under `/data/packs/` and pack publish/list/file routes in `agh/server/routes/packs.py`; test required `agh.pack.toml`, instruction sources, skills, immutability, and no `latest` publish.
 - [x] 4.2 Add project-pack assignment routes and `latest` resolution by highest SemVer; test ordering by `position ASC`, then `domain/name ASC`.
 - [x] 4.3 Add pull-manifest schema and file download URLs in `agh/server/routes/projects.py`; test project developer authorization and resolved concrete versions.
-- [ ] 4.4 Add CLI `pack publish/list` and project assignment commands with manifest validation errors surfaced as exit code `2`.
+- [x] 4.4 Add CLI `pack publish/list` and project assignment commands with manifest validation errors surfaced as exit code `2`.
 - [ ] 5.1–6.4 unchanged.
 
 ## Workload / PR Boundary
 
-- **Mode**: stacked PR slice (PR4C) targeting current `main` after merged PR #12, per prompt boundary
-- **Boundary**: Server-side project pull-manifest route only. No CLI pack/project assignment commands, `agh pull`, marker application, `.agh/lock.toml`, `.agh/packs` cache, agent integrations, web UI, OAuth/SSO, project member list, or commits.
-- **Review impact**: focused pull-manifest API slice with modifications to the existing project route module and one focused FastAPI test file; intended as one stacked work unit under the resolved stacked-to-main strategy
+- **Mode**: stacked PR slice (PR4D) targeting current `main` after merged PR #13, per prompt boundary
+- **Boundary**: CLI pack publish/list and project pack assignment commands only, using existing server APIs. No `agh pull`, marker application, `.agh/lock.toml`, `.agh/packs` cache, agent integrations, server API changes, web UI, OAuth/SSO, project member list, commits, or PR/merge actions.
+- **Review impact**: focused CLI slice with one new helper module, one modified CLI entrypoint, and one focused CLI test file; intended as one stacked work unit under the resolved stacked-to-main strategy
