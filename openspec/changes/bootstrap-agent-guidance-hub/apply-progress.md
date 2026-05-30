@@ -19,6 +19,8 @@
 - [x] 3.1 (PR3A split) Add server user CRUD and token rotate/reset routes with role enforcement and sole-owner protection tests.
 - [x] 3.2 (PR3B split) Add server project CRUD, duplicate active normalized URL `409`, developer membership add/remove routes, admin/member project access checks, and inactive project denial tests.
 - [x] 3.3 (PR3C split) Add Typer `user`, `token`, and `project` command groups mapping to `/api/v1`, using saved config credentials and masking stored secrets in command output.
+- [x] 3.4 (PR3D split) Add `agh sync` workspace linking via git remote lookup, `.agh/project.toml`, `--remote`, `--force`, and no manual `--project` override.
+- [x] 4.1 (PR4A split) Add filesystem pack storage plus server pack publish/list/file routes with manifest, instruction source, skill layout, immutability, auth, and path safety tests.
 
 ## Files Changed (PR2A)
 
@@ -110,6 +112,17 @@
 | `openspec/changes/bootstrap-agent-guidance-hub/tasks.md` | Modified | Marks task 3.4 complete only. |
 | `openspec/changes/bootstrap-agent-guidance-hub/apply-progress.md` | Modified | Records cumulative PR3D progress and validation. |
 | `sdd/apply-pr3d-result.md` | Generated local artifact | Standard SDD apply result envelope for PR3D; intentionally ignored by `.gitignore` under `sdd/`. |
+
+## Files Changed (PR4A)
+
+| File | Action | Notes |
+|------|--------|-------|
+| `agh/server/routes/packs.py` | Created | Adds authenticated `GET/POST /api/v1/packs` and `GET /api/v1/packs/{domain}/{name}/versions/{version}/files/{path}` routes, JSON pack publish payload validation, filesystem storage under `$AGH_DATA_DIR/packs/`, DB metadata writes, immutable version conflicts, checksum calculation, and path/symlink safety checks. |
+| `agh/server/app.py` | Modified | Wires pack routes under `/api/v1`. |
+| `tests/test_pack_routes.py` | Created | FastAPI integration coverage for publish success, list/download, missing/invalid manifest fields, missing instruction source, `latest` rejection, republish conflict/no overwrite, optional skill layout, auth/role requirements, traversal rejection, symlinked storage rejection, and symlink read rejection. |
+| `openspec/changes/bootstrap-agent-guidance-hub/tasks.md` | Modified | Marks task 4.1 complete only. |
+| `openspec/changes/bootstrap-agent-guidance-hub/apply-progress.md` | Modified | Records cumulative PR4A progress and validation. |
+| `sdd/apply-pr4a-result.md` | Generated local artifact | Standard SDD apply result envelope for PR4A; intentionally ignored by `.gitignore` under `sdd/`. |
 
 ## Validation
 
@@ -281,15 +294,54 @@ uv run pytest -q
 
 git diff --check
 # passed
+
+uv run pytest tests/test_pack_routes.py -q
+# 6 passed, 1 warning in 0.51s
+
+uv run pytest -q
+# 76 passed, 1 warning in 8.59s
+
+python -m compileall -q agh/server/routes/packs.py tests/test_pack_routes.py
+# passed
+
+git diff --check
+# passed
+
+uv run pytest tests/test_pack_routes.py -q
+# 7 passed, 1 warning in 0.60s (after PR4A review fixes)
+
+uv run pytest -q
+# 77 passed, 1 warning in 8.80s (after PR4A review fixes)
+
+git diff --check
+# passed
+
+uv run pytest tests/test_pack_routes.py -q
+# 9 passed, 1 warning in 0.64s (after PR4A second review fixes)
+
+uv run pytest -q
+# 79 passed, 1 warning in 8.86s (after PR4A second review fixes)
+
+git diff --check
+# passed
+
+uv run pytest tests/test_pack_routes.py -q
+# 9 passed, 1 warning in 0.66s (after streamed chunk pre-extend cap fix)
+
+uv run pytest -q
+# 79 passed, 1 warning in 8.84s (after streamed chunk pre-extend cap fix)
+
+git diff --check
+# passed
 ```
 
 ## TDD Evidence
 
-Strict TDD not active (`openspec/config.yaml: strict_tdd: false`). Tests were written before PR2B-1 production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.db'` before implementation. PR2B-2 tests were also written before production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.auth'` before implementation. PR2B-3 tests were written before production code where practical; the focused RED run failed because `login`/`config show` were not implemented and no-arg help exited 2. PR3A tests were written before production code where practical; the focused RED run failed with 404s for the missing `/api/v1/users` routes before implementation. PR3B tests were written before production code where practical; the focused RED run failed with 404s for the missing `/api/v1/projects` routes before implementation. PR3C standard-mode tests were added with implementation; a focused test initially exposed a fake-handler route mismatch before passing. PR3D standard-mode tests were added with implementation and passed focused temp-git-repo coverage.
+Strict TDD not active (`openspec/config.yaml: strict_tdd: false`). Tests were written before PR2B-1 production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.db'` before implementation. PR2B-2 tests were also written before production code where practical; the focused RED run failed with `ModuleNotFoundError: No module named 'agh.server.auth'` before implementation. PR2B-3 tests were written before production code where practical; the focused RED run failed because `login`/`config show` were not implemented and no-arg help exited 2. PR3A tests were written before production code where practical; the focused RED run failed with 404s for the missing `/api/v1/users` routes before implementation. PR3B tests were written before production code where practical; the focused RED run failed with 404s for the missing `/api/v1/projects` routes before implementation. PR3C standard-mode tests were added with implementation; a focused test initially exposed a fake-handler route mismatch before passing. PR3D standard-mode tests were added with implementation and passed focused temp-git-repo coverage. PR4A standard-mode tests were added with implementation and passed focused FastAPI pack-route coverage.
 
 ## Deviations from Design
 
-None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite directly, stores only `tokens.token_hash`, runs migrations before bootstrap, and writes the one bootstrap plaintext token under `$AGH_DATA_DIR/secrets/initial_owner_token` so Docker's `AGH_DATA_DIR=/data` yields the specified `/data/secrets/initial_owner_token` path. PR2B-3 uses stdlib `urllib.request` instead of adding an HTTP dependency, stores the default config at `~/.config/agh/config.toml`, supports `AGH_CONFIG_FILE` for test isolation/overrides, and never adds a reveal-secret flag. PR3A returns an initial plaintext token once from `POST /users` for better admin UX while storing only `tokens.token_hash`; `DELETE /users/{id}` deactivates (`active=0`) because the schema has no `deleted_at` column and auth already denies inactive users. PR3B keeps project errors as simple `HTTPException.detail` strings and uses `404` for member direct reads of missing/non-member/inactive projects to avoid practical project-existence leakage; owner/admin may inspect inactive projects while members list/read active developer projects only. PR3C keeps CLI output as plain JSON rather than rich tables, uses stdlib `urllib.request` to avoid a new HTTP dependency, and treats create/rotate/reset `token` values as the only permitted plaintext secret outputs because the server returns them once at issuance. PR3D also uses stdlib `urllib.request` and the existing project-list API rather than adding a server lookup endpoint; an existing `.agh/project.toml` requires `--force` before replacement to avoid accidental relinking, and `--force` replaces only `.agh/project.toml` while preserving `.agh/lock.toml`/other `.agh` artifacts.
+None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite directly, stores only `tokens.token_hash`, runs migrations before bootstrap, and writes the one bootstrap plaintext token under `$AGH_DATA_DIR/secrets/initial_owner_token` so Docker's `AGH_DATA_DIR=/data` yields the specified `/data/secrets/initial_owner_token` path. PR2B-3 uses stdlib `urllib.request` instead of adding an HTTP dependency, stores the default config at `~/.config/agh/config.toml`, supports `AGH_CONFIG_FILE` for test isolation/overrides, and never adds a reveal-secret flag. PR3A returns an initial plaintext token once from `POST /users` for better admin UX while storing only `tokens.token_hash`; `DELETE /users/{id}` deactivates (`active=0`) because the schema has no `deleted_at` column and auth already denies inactive users. PR3B keeps project errors as simple `HTTPException.detail` strings and uses `404` for member direct reads of missing/non-member/inactive projects to avoid practical project-existence leakage; owner/admin may inspect inactive projects while members list/read active developer projects only. PR3C keeps CLI output as plain JSON rather than rich tables, uses stdlib `urllib.request` to avoid a new HTTP dependency, and treats create/rotate/reset `token` values as the only permitted plaintext secret outputs because the server returns them once at issuance. PR3D also uses stdlib `urllib.request` and the existing project-list API rather than adding a server lookup endpoint; an existing `.agh/project.toml` requires `--force` before replacement to avoid accidental relinking, and `--force` replaces only `.agh/project.toml` while preserving `.agh/lock.toml`/other `.agh` artifacts. PR4A uses a JSON text-file map for `POST /packs` rather than multipart/archive upload to avoid adding dependencies in the server slice; CLI archive/directory packaging remains deferred to task 4.4.
 
 ## Issues Found / Review Fixes
 
@@ -320,15 +372,23 @@ None — PR2B-2 keeps auth/bootstrap in stdlib/FastAPI modules, uses SQLite dire
 - PR3C security review found API error payloads could echo token-like fields and `token_hash` normal output used partial masking. Fixed structured error redaction and made `token_hash` always fully redacted as `****`, with tests.
 - PR3C review noted `sdd/apply-pr3c-result.md` is an ignored local artifact, not a committed PR file; corrected the progress table wording.
 - PR3D security review found `agh sync` would follow a symlinked `.agh` directory and write `.agh/project.toml` outside the repository. Fixed sync to reject symlinked `.agh` directories before writing and added regression coverage.
+- PR4A review found pack publish failed under the default relative `.agh-data` root because storage safety compared relative and resolved paths. Fixed pack storage paths to use an absolute data dir/resolved storage target and added relative-data-dir publish coverage.
+- PR4A security review found unbounded JSON pack publish payloads could cause memory/disk/CPU DoS. Added content-length middleware for `POST /api/v1/packs` plus pack-level file count, path length, per-file byte, and total byte caps before writing/checksum, with regression coverage.
+- PR4A re-review found pack limits still ran after creating the packs root and chunked/no-Content-Length bodies could be parsed before caps. Moved payload validation before filesystem setup and changed `POST /packs` to stream/read the request body with a hard byte cap before JSON/Pydantic parsing; added regression tests for no-filesystem-write and streamed oversized body.
+- PR4A second re-review found the streamed body cap extended the bytearray before checking chunk size, allowing an oversized single chunk allocation. Fixed the stream loop to check `len(body) + len(chunk)` before `extend()` and changed the regression to send one oversized chunk.
 
 ## Remaining Tasks
 
 - [x] 3.3 Add Typer `user`, `token`, and `project` command groups in `agh/cli/main.py` mapping to `/api/v1` and masking secrets in config output.
 - [x] 3.4 Add `agh/cli/workspace_sync.py` for git remote lookup, no `--project`, `.agh/project.toml`, `--remote`, and `--force` link-only behavior; test with temp git repos.
-- [ ] 4.1–6.4 unchanged.
+- [x] 4.1 Add filesystem pack storage under `/data/packs/` and pack publish/list/file routes in `agh/server/routes/packs.py`; test required `agh.pack.toml`, instruction sources, skills, immutability, and no `latest` publish.
+- [ ] 4.2 Add project-pack assignment routes and `latest` resolution by highest SemVer; test ordering by `position ASC`, then `domain/name ASC`.
+- [ ] 4.3 Add pull-manifest schema and file download URLs in `agh/server/routes/projects.py`; test project developer authorization and resolved concrete versions.
+- [ ] 4.4 Add CLI `pack publish/list` and project assignment commands with manifest validation errors surfaced as exit code `2`.
+- [ ] 5.1–6.4 unchanged.
 
 ## Workload / PR Boundary
 
-- **Mode**: stacked PR slice (PR3D) targeting current `main` after merged PR #9, per prompt boundary
-- **Boundary**: Workspace sync link only: top-level `agh sync`, git remote lookup, project matching through existing `/api/v1/projects`, and `.agh/project.toml` writes. No packs, assignments, pull, `.agh/lock.toml` creation, `.agh/packs`, agent integrations, web UI, OAuth/SSO, or server API changes.
-- **Review impact**: focused CLI/workspace slice with one new workspace module, one small CLI wiring change, and one focused temp-git-repo test file; intended as one stacked work unit under the resolved stacked-to-main strategy
+- **Mode**: stacked PR slice (PR4A) targeting current `main` after merged PR #10, per prompt boundary
+- **Boundary**: Server-side pack publish/list/file routes and filesystem storage only. No project-pack assignments, pull-manifest, CLI pack commands, `agh pull`, `.agh/lock.toml`, `.agh/packs` cache, agent integrations, web UI, OAuth/SSO, project member list, or commits.
+- **Review impact**: focused server pack API slice with one route module, app wiring, and one focused FastAPI test file; intended as one stacked work unit under the resolved stacked-to-main strategy
