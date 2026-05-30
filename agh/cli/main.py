@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Annotated, Any, NoReturn
 
 import typer
@@ -21,6 +22,7 @@ from agh.cli.config import (
     save_config,
     validate_login,
 )
+from agh.cli.pack_publish import PackPublishBuildError, build_pack_publish_payload
 from agh.cli.workspace_sync import WorkspaceSyncError, sync_workspace
 
 APP_HELP = """Agent Guidance Hub — manage and distribute agent guidance packs.
@@ -34,6 +36,7 @@ Commands:
   user         Manage users.
   token        Rotate or reset user API tokens.
   project      Manage projects and developer memberships.
+  pack         Publish and list guidance packs.
   sync         Link this git repository to its matching AGH project.
 
 Global options:
@@ -119,11 +122,25 @@ project_member_app = typer.Typer(
     no_args_is_help=False,
     rich_markup_mode=None,
 )
+project_pack_app = typer.Typer(
+    cls=AghSubcommandGroup,
+    help="Manage project pack assignments.",
+    no_args_is_help=False,
+    rich_markup_mode=None,
+)
+pack_app = typer.Typer(
+    cls=AghSubcommandGroup,
+    help="Publish and list AGH packs.",
+    no_args_is_help=False,
+    rich_markup_mode=None,
+)
 app.add_typer(config_app, name="config")
 app.add_typer(user_app, name="user")
 app.add_typer(token_app, name="token")
 app.add_typer(project_app, name="project")
+app.add_typer(pack_app, name="pack")
 project_app.add_typer(project_member_app, name="member")
+project_app.add_typer(project_pack_app, name="pack")
 
 
 def _fail(message: str, *, code: int = 1) -> NoReturn:
@@ -475,6 +492,30 @@ def project_path(project_id: str) -> str:
     return f"/projects/{project_id}"
 
 
+@pack_app.callback(invoke_without_command=True)
+def pack_main(ctx: typer.Context) -> None:
+    """Pack publish/list commands."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(APP_HELP)
+        raise typer.Exit(0)
+
+
+@pack_app.command("list", help="List published pack versions.")
+def pack_list() -> None:
+    _echo_payload(_api_request("GET", "/packs"))
+
+
+@pack_app.command("publish", help="Publish a local pack directory.")
+def pack_publish(
+    path: Annotated[Path, typer.Argument(help="Directory containing agh.pack.toml.")],
+) -> None:
+    try:
+        body = build_pack_publish_payload(path)
+    except PackPublishBuildError as exc:
+        _fail(str(exc), code=2)
+    _echo_payload(_api_request("POST", "/packs", body=body))
+
+
 @project_member_app.callback(invoke_without_command=True)
 def project_member_main(ctx: typer.Context) -> None:
     """Project developer membership commands."""
@@ -497,6 +538,72 @@ def project_member_remove(
     user_id: Annotated[str, typer.Argument(help="User id, e.g. usr_...")],
 ) -> None:
     _echo_payload(_api_request("DELETE", f"/projects/{project_id}/members/{user_id}"))
+
+
+@project_pack_app.callback(invoke_without_command=True)
+def project_pack_main(ctx: typer.Context) -> None:
+    """Project pack assignment commands."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(APP_HELP)
+        raise typer.Exit(0)
+
+
+@project_pack_app.command("list", help="List project pack assignments.")
+def project_pack_list(
+    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+) -> None:
+    _echo_payload(_api_request("GET", f"/projects/{project_id}/packs"))
+
+
+@project_pack_app.command("add", help="Assign a pack to a project.")
+def project_pack_add(
+    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    pack_ref: Annotated[str, typer.Argument(help="Pack ref, e.g. acme/name@1.0.0.")],
+    position: Annotated[int, typer.Option("--position", help="Assignment order.")] = 0,
+) -> None:
+    _echo_payload(
+        _api_request(
+            "POST",
+            f"/projects/{project_id}/packs",
+            body={"pack_ref": pack_ref, "position": position},
+        )
+    )
+
+
+@project_pack_app.command("update", help="Update a project pack assignment.")
+def project_pack_update(
+    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    assignment_id: Annotated[str, typer.Argument(help="Assignment id, e.g. asn_...")],
+    pack_ref: Annotated[
+        str | None, typer.Option("--pack-ref", help="New pack ref.")
+    ] = None,
+    position: Annotated[
+        int | None, typer.Option("--position", help="New order.")
+    ] = None,
+    active: Annotated[
+        bool | None,
+        typer.Option("--active/--inactive", help="Set whether assignment is active."),
+    ] = None,
+) -> None:
+    _echo_payload(
+        _api_request(
+            "PATCH",
+            f"/projects/{project_id}/packs/{assignment_id}",
+            body=_body_without_none(
+                pack_ref=pack_ref, position=position, active=active
+            ),
+        )
+    )
+
+
+@project_pack_app.command("remove", help="Deactivate a project pack assignment.")
+def project_pack_remove(
+    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    assignment_id: Annotated[str, typer.Argument(help="Assignment id, e.g. asn_...")],
+) -> None:
+    _echo_payload(
+        _api_request("DELETE", f"/projects/{project_id}/packs/{assignment_id}")
+    )
 
 
 if __name__ == "__main__":
