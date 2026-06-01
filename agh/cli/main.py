@@ -528,6 +528,16 @@ def _pack_ref(pack: dict[str, Any]) -> str:
     return f"{pack.get('domain', '')}/{pack.get('name', '')}@{pack.get('version', '')}"
 
 
+def _echo_pack_published(pack: dict[str, Any]) -> None:
+    typer.echo(f"Published {_pack_ref(pack)}.")
+    if pack.get("pack_id"):
+        typer.echo(f"Pack ID: {pack.get('pack_id')}")
+    if pack.get("description"):
+        typer.echo(f"Description: {pack.get('description')}")
+    if pack.get("checksum"):
+        typer.echo(f"Checksum: {pack.get('checksum')}")
+
+
 def _echo_project_pack_list(payload: dict[str, Any]) -> None:
     assignments = payload.get("project_packs", [])
     if not assignments:
@@ -546,6 +556,13 @@ def _echo_project_pack_list(payload: dict[str, Any]) -> None:
             for assignment in assignments
         ],
     )
+
+
+def _echo_project_detail(project: dict[str, Any]) -> None:
+    typer.echo(f"Project: {project.get('name', '')}")
+    typer.echo(f"Project ID: {project.get('id', '')}")
+    typer.echo(f"Repo: {project.get('repo_url_normalized', '')}")
+    typer.echo(f"Status: {_status_label(project)}")
 
 
 def _echo_project_success(verb: str, project: dict[str, Any]) -> None:
@@ -715,7 +732,7 @@ def project_create(
 def project_get(
     project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
 ) -> None:
-    _echo_payload(_api_request("GET", project_path(project_id)))
+    _echo_project_detail(_api_request("GET", project_path(project_id)))
 
 
 @project_app.command("update", help="Update project name, repo URL, or active flag.")
@@ -775,7 +792,7 @@ def pack_publish(
         body = build_pack_publish_payload(path)
     except PackPublishBuildError as exc:
         _fail(str(exc), code=2)
-    _echo_payload(_api_request("POST", "/packs", body=body))
+    _echo_pack_published(_api_request("POST", "/packs", body=body))
 
 
 @project_member_app.callback(invoke_without_command=True)

@@ -343,7 +343,10 @@ def test_cli_project_mutation_commands_use_human_output(tmp_path: Path) -> None:
     assert member_removed.stdout == "Removed user usr_2 from project prj_2.\n"
 
     assert project_get.exit_code == 0, project_get.stdout
-    assert '"repo_url_normalized"' in project_get.stdout
+    assert project_get.stdout == (
+        "Project: API\nProject ID: prj_2\nRepo: github.com/org/api\nStatus: active\n"
+    )
+    assert '"repo_url_normalized"' not in project_get.stdout
 
 
 def test_cli_read_commands_show_empty_messages(monkeypatch) -> None:

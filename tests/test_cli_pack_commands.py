@@ -65,7 +65,13 @@ def _response_for(method: str, path: str) -> tuple[int, dict[str, Any]]:
             ]
         }
     if (method, path) == ("POST", "/api/v1/packs"):
-        return 201, {"id": "acme/onboarding@1.0.0", "token_hash": "server-secret"}
+        return 201, {
+            "id": "acme/onboarding@1.0.0",
+            "pack_id": "pack_1",
+            "description": "Demo onboarding instructions.",
+            "checksum": "sha256:" + "a" * 64,
+            "token_hash": "server-secret",
+        }
     if (method, path) == ("GET", "/api/v1/projects/prj_1/packs"):
         return 200, {
             "project_packs": [
@@ -213,6 +219,30 @@ def test_cli_pack_publish_list_and_project_pack_commands_map_to_api(
         "position": 7,
         "active": False,
     }
+
+
+def test_cli_pack_publish_uses_human_output_without_secret_fields(
+    tmp_path: Path,
+) -> None:
+    server, _handler, url = _serve_api()
+    env = _write_config(tmp_path, url)
+    pack_dir = _pack_dir(tmp_path)
+    try:
+        result = CliRunner().invoke(
+            cli_app, ["pack", "publish", str(pack_dir)], env=env
+        )
+    finally:
+        server.shutdown()
+
+    assert result.exit_code == 0, result.stdout
+    assert result.stdout == (
+        "Published acme/onboarding@1.0.0.\n"
+        "Pack ID: pack_1\n"
+        "Description: Demo onboarding instructions.\n"
+        f"Checksum: sha256:{'a' * 64}\n"
+    )
+    assert "token_hash" not in result.stdout
+    assert "server-secret" not in result.stdout
 
 
 def test_cli_pack_read_commands_use_human_output(tmp_path: Path) -> None:
