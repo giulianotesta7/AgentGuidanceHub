@@ -39,9 +39,11 @@ docker run --rm -p 8912:8912 -v agh-data:/data \
   agh
 ```
 
-Log in with the first owner token:
+Install the local CLI, then log in with the first owner token:
 
 ```bash
+./scripts/install-cli.sh
+
 agh login \
   --url http://127.0.0.1:8912 \
   --email owner@example.com \
@@ -61,6 +63,7 @@ agh agent
 
 | Guide | Use it for |
 |-------|------------|
+| [Installation](docs/installation.md) | Install the local `agh` CLI and run the Docker server. |
 | [Quickstart](docs/quickstart.md) | First Docker run, login, project link, and first pull. |
 | [Workspace guide](docs/workspace.md) | Repo setup, pull behavior, markers, skills, lockfile, and Git rules. |
 | [Operations](docs/operations.md) | Docker runtime layout, `/data`, logs, healthcheck, backup, and upgrades. |

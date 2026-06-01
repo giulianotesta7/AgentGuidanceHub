@@ -39,7 +39,21 @@ docker run --rm -v agh-data:/data busybox \
   cat /data/secrets/initial_owner_token
 ```
 
-## 3. Log in
+## 3. Install the local CLI
+
+From the AGH checkout:
+
+```bash
+./scripts/install-cli.sh
+```
+
+Verify it:
+
+```bash
+agh --help
+```
+
+## 4. Log in
 
 ```bash
 agh login \
@@ -54,7 +68,7 @@ Check the saved config. AGH masks the token:
 agh config show
 ```
 
-## 4. Create a project
+## 5. Create a project
 
 ```bash
 agh project create \
@@ -62,7 +76,7 @@ agh project create \
   "<project-name>"
 ```
 
-## 5. Link a repo
+## 6. Link a repo
 
 Run this inside the repo whose remote matches the project:
 
@@ -76,7 +90,7 @@ AGH writes:
 .agh/project.toml
 ```
 
-## 6. Pull the assigned packs
+## 7. Pull the assigned packs
 
 Preview first:
 
