@@ -13,11 +13,13 @@ def test_readme_is_docker_first_landing_page_with_doc_links() -> None:
         "docker build -t agh .",
         "docker run --rm -p 8912:8912 -v agh-data:/data \\",
         "AGH_BOOTSTRAP_OWNER_EMAIL=owner@example.com",
+        "./scripts/install-cli.sh",
         "agh login",
         "agh sync",
         "agh pull --dry-run",
         "agh pull",
         "agh agent",
+        "[Installation](docs/installation.md)",
         "[Quickstart](docs/quickstart.md)",
         "[Workspace guide](docs/workspace.md)",
         "[Operations](docs/operations.md)",
@@ -28,6 +30,42 @@ def test_readme_is_docker_first_landing_page_with_doc_links() -> None:
         assert expected in readme
 
 
+def test_installation_docs_cover_cli_install_and_uninstall() -> None:
+    installation = _read("docs/installation.md")
+
+    for expected in [
+        "./scripts/install-cli.sh",
+        "uv tool install --force .",
+        "agh --help",
+        "uv tool update-shell",
+        "uv tool dir",
+        "uv tool uninstall agh",
+        "docker build -t agh .",
+        "docker run --rm -p 8912:8912 -v agh-data:/data \\",
+    ]:
+        assert expected in installation
+
+
+def test_install_cli_script_is_safe_and_uses_uv_tool_install() -> None:
+    script = _read("scripts/install-cli.sh")
+    mode = Path("scripts/install-cli.sh").stat().st_mode
+
+    assert mode & 0o111
+    for expected in [
+        "set -euo pipefail",
+        "BASH_SOURCE[0]",
+        "pyproject.toml",
+        "command -v uv",
+        "uv tool install --force",
+        "agh --help",
+        "uv tool update-shell",
+        "uv tool dir",
+    ]:
+        assert expected in script
+    for forbidden in [".bashrc", ".zshrc", ".profile", ">> ~/"]:
+        assert forbidden not in script
+
+
 def test_quickstart_documents_first_run_and_first_pull() -> None:
     quickstart = _read("docs/quickstart.md")
 
@@ -35,6 +73,8 @@ def test_quickstart_documents_first_run_and_first_pull() -> None:
         "docker build -t agh .",
         "docker run --rm -p 8912:8912 -v agh-data:/data \\",
         "/data/secrets/initial_owner_token",
+        "./scripts/install-cli.sh",
+        "agh --help",
         "agh login",
         "agh project create",
         "agh sync",
