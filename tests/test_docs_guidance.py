@@ -10,6 +10,7 @@ def test_readme_is_docker_first_landing_page_with_doc_links() -> None:
 
     for expected in [
         "Self-hosted agent instructions and skills",
+        "[Español](README.es.md)",
         "docker build -t agh .",
         "docker run --rm -p 8912:8912 -v agh-data:/data \\",
         "AGH_BOOTSTRAP_OWNER_EMAIL=owner@example.com",
@@ -139,7 +140,7 @@ def test_pack_docs_cover_pack_authoring_and_publish() -> None:
 
     for expected in [
         "agh.pack.toml",
-        "description = \"Shared onboarding instructions and review skills.\"",
+        'description = "Shared onboarding instructions and review skills."',
         "instructions/AGENTS.md",
         "instructions/CLAUDE.md",
         "skills/<name>/SKILL.md",
@@ -201,6 +202,72 @@ def test_admin_docs_cover_bootstrap_users_roles_tokens_and_config() -> None:
         "token hashes",
     ]:
         assert expected in admin
+
+
+def test_spanish_readme_and_docs_mirror_core_flows() -> None:
+    spanish_readme = _read("README.es.md")
+
+    for expected in [
+        "Instrucciones y skills",
+        "[English](README.md)",
+        "./scripts/install.sh",
+        "agh sync",
+        "agh pull --dry-run",
+        "[Instalación](docs/es/installation.md)",
+        "[Packs](docs/es/packs.md)",
+        "[Proyectos](docs/es/projects.md)",
+        "[Admin](docs/es/admin.md)",
+        ".agh-cache/",
+    ]:
+        assert expected in spanish_readme
+
+    expected_docs = {
+        "docs/es/installation.md": [
+            "uv tool install --force .",
+            "agh --help",
+            "uv tool uninstall agh",
+        ],
+        "docs/es/quickstart.md": [
+            "agh login",
+            "agh project create",
+            "agh pull --dry-run",
+            ".agh-cache/",
+        ],
+        "docs/es/workspace.md": [
+            "AGH-BEGIN",
+            "agh pull --force",
+            ".agh-cache/packs/",
+            "Exit codes",
+        ],
+        "docs/es/operations.md": [
+            "AGH_DATA_DIR=/data",
+            "curl http://127.0.0.1:8912/api/v1/health",
+            "Backup",
+            "Upgrade",
+        ],
+        "docs/es/packs.md": [
+            "agh.pack.toml",
+            'description = "Shared onboarding instructions and review skills."',
+            "agh pack publish",
+            "SemVer",
+        ],
+        "docs/es/projects.md": [
+            "agh project create",
+            "agh project pack add",
+            "ASSIGNMENT_ID",
+            "Resolved: acme/onboarding@1.0.0",
+        ],
+        "docs/es/admin.md": [
+            "agh user create",
+            "agh token rotate",
+            "token = ****",
+            "Store this token now. AGH will not show it again.",
+        ],
+    }
+    for path, expected_values in expected_docs.items():
+        content = _read(path)
+        for expected in expected_values:
+            assert expected in content
 
 
 def test_dockerfile_documents_data_dirs_and_healthcheck() -> None:
