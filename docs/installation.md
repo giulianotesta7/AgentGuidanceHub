@@ -5,9 +5,9 @@ AGH has two parts:
 - the server, which runs with Docker;
 - the local `agh` CLI, which you install on your workstation.
 
-Install the CLI first, then use it to log in, create projects, publish packs, and run `agh pull` inside repos.
+Install the CLI first, then use it for login, pack/project administration, and workspace operations.
 
-## Install the CLI from a checkout
+## Install the CLI
 
 Clone the repo and run the installer:
 
@@ -25,7 +25,7 @@ Verify the command:
 agh --help
 ```
 
-After this, you can run `agh` from any directory. Workspace commands such as `agh sync` and `agh pull` use the repo you are currently in.
+The installer places the `agh` binary on the user's `PATH`. Workspace commands resolve the target repo from the current working directory.
 
 ## PATH troubleshooting
 

@@ -127,6 +127,6 @@ Token commands revoke previous active tokens for that user and print the replace
 ## Admin checklist
 
 - Save first owner token securely.
-- Create named users instead of sharing one token.
+- Create one user per person instead of sharing tokens.
 - Rotate or reset tokens when a token leaks.
 - Use `agh config show` to confirm which server and account your CLI uses.
