@@ -30,7 +30,7 @@ repository
   └─ .agh/lock.toml
 ```
 
-## Quick Start 
+## Quick Start
 
 Levantá el server con Docker:
 

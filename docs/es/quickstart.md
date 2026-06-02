@@ -39,7 +39,7 @@ docker run --rm -v agh-data:/data busybox \
   cat /data/secrets/initial_owner_token
 ```
 
-## 3. Instalar el CLI 
+## 3. Instalar el CLI
 
 Desde el checkout de AGH:
 
