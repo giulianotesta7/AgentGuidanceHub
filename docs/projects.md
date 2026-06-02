@@ -1,6 +1,6 @@
 # Projects
 
-A project is an AGH record linked to one git repository. Projects decide which packs a repo receives when you run `agh sync` and `agh pull`.
+A project is an AGH record linked to one git repository. Projects define which packs a workspace receives during sync and pull.
 
 ## Create a project
 
@@ -112,11 +112,11 @@ Use `latest` when the project should resolve to the newest published version dur
 agh project pack add prj_... acme/onboarding@latest
 ```
 
-When a workspace runs `agh pull`, AGH writes the resolved concrete version and checksum to `.agh/lock.toml`.
+During workspace pull, AGH writes the resolved concrete version and checksum to `.agh/lock.toml`.
 
 ## Workspace flow
 
-After project setup, run these commands in the target repo:
+After project setup, run the workspace flow in the target repo:
 
 ```bash
 agh sync
