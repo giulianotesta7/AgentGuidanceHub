@@ -9,11 +9,15 @@ def test_readme_is_docker_first_landing_page_with_doc_links() -> None:
     readme = _read("README.md")
 
     for expected in [
-        "Self-hosted agent instructions and skills",
+        "Self-hosted guidance distribution for coding agents",
         "[Español](README.es.md)",
+        "Centralize guidance",
+        "Version every change",
         "docker compose up -d",
+        "curl http://127.0.0.1:8912/api/v1/health",
         "ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}",
-        "AGH_IMAGE_TAG=0.1.2 docker compose up -d",
+        "AGH_IMAGE_TAG=0.2.0 docker compose up -d",
+        "curl -fsSL https://raw.githubusercontent.com/giulianotesta7/AgentGuidanceHub/main/scripts/install.sh | sh",
         "uv tool install --force agh",
         "agh login",
         "agh sync",
@@ -245,11 +249,14 @@ def test_spanish_readme_and_docs_mirror_core_flows() -> None:
     spanish_readme = _read("README.es.md")
 
     for expected in [
-        "Instrucciones y skills",
+        "Guidance para agentes de código, self-hosted",
         "[English](README.md)",
+        "Centralizá el guidance",
+        "Versioná cada cambio",
         "docker compose up -d",
         "ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}",
-        "AGH_IMAGE_TAG=0.1.2 docker compose up -d",
+        "AGH_IMAGE_TAG=0.2.0 docker compose up -d",
+        "curl -fsSL https://raw.githubusercontent.com/giulianotesta7/AgentGuidanceHub/main/scripts/install.sh | sh",
         "uv tool install --force agh",
         "agh sync",
         "agh agent select opencode",

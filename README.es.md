@@ -2,66 +2,81 @@
 
 # Agent Guidance Hub (AGH)
 
-<p><strong>Instrucciones y skills para agentes de código, self-hosted y sincronizadas por repo.</strong></p>
+<p><strong>Guidance para agentes de código, self-hosted.</strong></p>
+
+<p>
+  <a href="https://pypi.org/project/agh/"><img alt="PyPI" src="https://img.shields.io/pypi/v/agh?color=1f6feb"></a>
+  <a href="https://github.com/giulianotesta7/AgentGuidanceHub/pkgs/container/agent-guidance-hub"><img alt="GHCR" src="https://img.shields.io/badge/ghcr-agent--guidance--hub-1f6feb"></a>
+  <a href="https://github.com/giulianotesta7/AgentGuidanceHub/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/giulianotesta7/AgentGuidanceHub/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/giulianotesta7/AgentGuidanceHub/releases"><img alt="Release" src="https://img.shields.io/github/v/release/giulianotesta7/AgentGuidanceHub"></a>
+</p>
 
 </div>
 
----
-
 [English](README.md)
 
-## Para qué sirve AGH
+AGH le da a un equipo un lugar para publicar, versionar, asignar y traer instrucciones y skills reutilizables de agentes a sus repos.
 
-AGH le da a un equipo un lugar para publicar las instrucciones y skills reutilizables que usan sus agentes de código en los repos: `AGENTS.md`, `CLAUDE.md` y archivos de skill ubicados bajo directorios de cada harness.
+Usalo cuando el guidance de agentes necesita la misma disciplina que la infraestructura: cambios reproducibles, ownership claro y un server propio.
 
-Sin AGH, esos archivos terminan copiándose a mano y desalineados entre repos. Con AGH, publicás un pack versionado, lo asignás a un proyecto y aplicás los archivos asignados en cada repo.
+## Por qué AGH
+
+- **Centralizá el guidance** — publicá `AGENTS.md`, `CLAUDE.md` y archivos de skill compartidos una sola vez.
+- **Versioná cada cambio** — los packs son releases SemVer inmutables asignados a proyectos.
+- **Mantené repos determinísticos** — cada workspace trae un manifest, registra `.agh/lock.toml` y aplica solo el target del agente elegido.
+- **Operalo vos** — corré el server con Docker, SQLite y storage persistente en `/data`.
+
+## Cómo funciona
 
 ```text
-AGH Docker service
-  ├─ /data/agh.sqlite3
-  ├─ /data/packs/
-  ├─ /data/logs/agh.log
-  └─ /data/secrets/initial_owner_token
-        ↓ manifest + pack downloads
-repository
-  ├─ AGENTS.md / CLAUDE.md
-  ├─ .claude/skills/.../SKILL.md
-  ├─ .opencode/skills/.../SKILL.md
-  └─ .agh/lock.toml
+Pack author ── publish ──▶ AGH server ── assign ──▶ Project
+                              │                         │
+                              │                         ▼
+                         SQLite + /data          Repo workspace
+                                                       │
+                                                       ├─ AGENTS.md + .opencode/skills/
+                                                       └─ CLAUDE.md + .claude/skills/
 ```
 
-## Quick Start
+Cada dev elige un agente por workspace:
 
-Levantá la imagen publicada del server con Docker Compose:
+```bash
+agh agent select opencode # o: agh agent select claude
+```
+
+AGH guarda esa elección en `.agh-cache/preferences.toml`; no la commiteás.
+
+## Quick start
+
+Levantá el server con la imagen Docker publicada:
 
 ```bash
 docker compose up -d
+curl http://127.0.0.1:8912/api/v1/health
 ```
 
-El compose file usa por defecto la imagen publicada más reciente:
-
-```text
-ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
-```
-
-Para pinnear un deployment de producción, definí `AGH_IMAGE_TAG` antes de levantar Compose:
+Instalá el CLI:
 
 ```bash
-AGH_IMAGE_TAG=0.1.2 docker compose up -d
+curl -fsSL https://raw.githubusercontent.com/giulianotesta7/AgentGuidanceHub/main/scripts/install.sh | sh
 ```
 
-Instalá el CLI local y logueate con el primer token owner:
+O usá uv directo:
 
 ```bash
 uv tool install --force agh
+```
 
+Logueate con el primer token owner:
+
+```bash
 agh login \
   --url http://127.0.0.1:8912 \
   --email owner@example.com \
   --token "$(docker run --rm -v agh-data:/data busybox cat /data/secrets/initial_owner_token)"
 ```
 
-Después trabajá desde un repo:
+Después trabajá desde un repo conectado:
 
 ```bash
 agh sync
@@ -71,12 +86,42 @@ agh pull
 agh agent
 ```
 
+Compose usa esta imagen por defecto:
+
+```text
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
+```
+
+Pinneá deployments de producción con un release tag:
+
+```bash
+AGH_IMAGE_TAG=0.2.0 docker compose up -d
+```
+
+## Qué se commitea
+
+Commiteá el estado compartido del workspace:
+
+- `.agh/project.toml`
+- `.agh/lock.toml`
+- el target generado que tu equipo quiera revisar, como `AGENTS.md` o `CLAUDE.md`
+
+No commitees estado local de cache:
+
+```gitignore
+.agh-cache/
+```
+
+AGH descarga packs en `.agh-cache/packs/` y guarda la elección de agente de cada dev en `.agh-cache/preferences.toml`.
+
+AGH genera skill targets bajo `.claude/skills/` u `.opencode/skills/` para el agente elegido. Commitelos solo si tu equipo quiere revisar esos archivos en Git.
+
 ## Docs
 
 | Guía | Usala para |
 |------|------------|
-| [Instalación](docs/es/installation.md) | Instalar el CLI local `agh` y correr el server Docker. |
 | [Quickstart](docs/es/quickstart.md) | Primer run con Docker, login, link de proyecto y flujo de aplicación del workspace. |
+| [Instalación](docs/es/installation.md) | Instalador del CLI, instalación desde checkout, PATH y desinstalación. |
 | [Packs](docs/es/packs.md) | Crear, publicar y listar packs de instrucciones/skills. |
 | [Proyectos](docs/es/projects.md) | Crear proyectos y asignar packs a repos. |
 | [Admin](docs/es/admin.md) | Bootstrap owner, usuarios, roles, tokens y config local. |
@@ -85,31 +130,9 @@ agh agent
 | [Contribuir](CONTRIBUTING.md) | Flujo issue-first, reglas de PR y comandos de validación. |
 | [Seguridad](SECURITY.md) | Reporte de vulnerabilidades y alcance de seguridad soportado. |
 
-## Conceptos
+## Estado
 
-| Concepto | Significado |
-|----------|-------------|
-| Pack | Conjunto versionado de archivos de instrucciones y agent skills. |
-| Project | Registro de AGH asociado a un repositorio git. |
-| Pull manifest | Plan del server con los archivos que un repo debe descargar y aplicar. |
-| Lockfile | `.agh/lock.toml`; versiones resueltas, checksums, sources y modo de placement. |
-| Cache | `.agh-cache/packs/`; archivos descargados que AGH puede reconstruir. |
-
-## Regla con Git
-
-Commiteá el estado estable del proyecto:
-
-- `.agh/project.toml`
-- `.agh/lock.toml`
-- el target del agente seleccionado, como `AGENTS.md` o `CLAUDE.md`
-
-Ignorá el cache y la selección local de agente de cada dev:
-
-```gitignore
-.agh-cache/
-```
-
-Los skill targets bajo `.claude/skills/` u `.opencode/skills/` los genera el flujo de pull para el agente local seleccionado. Commitelos solo si tu equipo quiere revisar esos archivos en Git. Si son symlinks, refrescá el workspace después de clonar para reconstruir `.agh-cache/packs/`.
+AGH está en una etapa temprana y apunta a equipos que quieren controlar su guidance de agentes. Se publica como paquete PyPI e imagen server en GHCR.
 
 ## Desarrollo
 
