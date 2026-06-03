@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
+from agh import __version__
 from agh.server.db import get_data_dir, get_database_path, run_migrations
 
 DEFAULT_PORT = 8912
@@ -78,7 +79,7 @@ def create_app() -> FastAPI:
 
     bootstrap_initial_owner(data_dir=data_dir, db_path=db_path)
 
-    application = FastAPI(title="Agent Guidance Hub", version="0.1.1")
+    application = FastAPI(title="Agent Guidance Hub", version=__version__)
     application.state.db_path = db_path
 
     @application.middleware("http")

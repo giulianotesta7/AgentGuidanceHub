@@ -2,6 +2,8 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ARG AGH_VERSION=0.0.0
+
 ENV AGH_DATA_DIR=/data
 ENV PYTHONUNBUFFERED=1
 ENV UV_SYSTEM_PYTHON=1
@@ -12,7 +14,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md ./
 COPY agh ./agh
 
-RUN uv sync --locked --no-dev
+RUN SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AGH=${AGH_VERSION} uv sync --locked --no-dev
 
 # Runtime state lives under /data so deployments can mount a persistent volume.
 # Logs append to /data/logs/agh.log and the first bootstrap owner token is

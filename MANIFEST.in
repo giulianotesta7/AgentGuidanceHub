@@ -1,0 +1,10 @@
+prune .github
+prune docs
+prune openspec
+prune sdd
+prune .pi
+prune .atl
+exclude docker-compose.yml
+exclude Dockerfile
+exclude .dockerignore
+exclude .gitignore
