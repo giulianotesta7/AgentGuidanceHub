@@ -309,6 +309,25 @@ def test_spanish_readme_and_docs_mirror_core_flows() -> None:
             assert expected in content
 
 
+def test_package_version_is_dynamic_from_git_metadata() -> None:
+    pyproject = _read("pyproject.toml")
+    init = _read("agh/__init__.py")
+    app = _read("agh/server/app.py")
+
+    for expected in [
+        'requires = ["setuptools>=68", "setuptools-scm>=8", "wheel"]',
+        'dynamic = ["version"]',
+        "[tool.setuptools_scm]",
+    ]:
+        assert expected in pyproject
+
+    assert '[project]\nname = "agh"\ndynamic = ["version"]' in pyproject
+    assert "from importlib.metadata import PackageNotFoundError, version" in init
+    assert '__version__ = version("agh")' in init
+    assert "from agh import __version__" in app
+    assert 'FastAPI(title="Agent Guidance Hub", version=__version__)' in app
+
+
 def test_ci_workflow_runs_release_validation_commands() -> None:
     ci = _read(".github/workflows/ci.yml")
 
@@ -333,71 +352,49 @@ def test_ci_workflow_runs_release_validation_commands() -> None:
     assert "publish" not in ci.lower()
 
 
-def test_pypi_cd_workflow_is_manual_and_uses_trusted_publishing() -> None:
-    publish = _read(".github/workflows/cd-pypi.yml")
+def test_tag_release_workflow_publishes_package_image_and_release() -> None:
+    release = _read(".github/workflows/release.yml")
 
     for expected in [
-        "name: CD PyPI",
-        "workflow_dispatch:",
-        "pypi-project-name:",
-        "confirm:",
-        "permissions:",
+        "name: Release",
+        "tags:",
+        '"v*"',
+        "contents: write",
         "id-token: write",
-        "environment: pypi",
-        "if: github.event.inputs.confirm == 'publish'",
+        "packages: write",
+        "fetch-depth: 0",
+        "Verify release tag is on main and highest SemVer tag",
+        "Re-verify release tag before publishing latest",
+        "Derive release version",
         "uv lock --locked",
         "uv run pytest -q",
         "uv run --with ruff ruff check .",
         "uv run --with ruff ruff format --check .",
         "uv run --with pyright pyright agh tests",
-        "uv build",
-        "uv tool install --force dist/*.whl",
-        "agh --help",
-        "PYPI_PROJECT_NAME: ${{ github.event.inputs.pypi-project-name }}",
-        'expected = os.environ["PYPI_PROJECT_NAME"]',
-        "pypa/gh-action-pypi-publish@release/v1",
-    ]:
-        assert expected in publish
-
-    assert 'expected = "${{ github.event.inputs.pypi-project-name }}"' not in publish
-    assert "push:" not in publish
-    assert "password" not in publish.lower()
-    assert "secrets." not in publish
-
-
-def test_ghcr_cd_workflow_is_manual_and_publishes_to_ghcr() -> None:
-    workflow = _read(".github/workflows/cd-ghcr.yml")
-
-    for expected in [
-        "name: CD GHCR",
-        "workflow_dispatch:",
-        "version:",
-        "confirm:",
-        "permissions:",
-        "packages: write",
-        "environment: ghcr",
-        "if: github.event.inputs.confirm == 'publish'",
-        "IMAGE_NAME: ghcr.io/giulianotesta7/agent-guidance-hub",
-        "VERSION: ${{ github.event.inputs.version }}",
-        "docker/setup-buildx-action@v3",
         "docker build --check .",
-        "docker/login-action@v3",
-        "registry: ghcr.io",
-        "password: ${{ github.token }}",
+        "uv build",
+        "Verify built package version",
+        "environment: pypi",
+        "environment: ghcr",
+        "pypa/gh-action-pypi-publish@release/v1",
         "docker/build-push-action@v6",
-        "push: true",
-        "${{ env.IMAGE_NAME }}:${{ env.VERSION }}",
-        "${{ env.IMAGE_NAME }}:latest",
+        "AGH_VERSION=${{ needs.validate.outputs.version }}",
+        "${{ env.IMAGE_NAME }}:${{ needs.validate.outputs.version }}",
+        "softprops/action-gh-release@v2",
+        "generate_release_notes: true",
     ]:
-        assert expected in workflow
-
-    assert "secrets." not in workflow
+        assert expected in release
 
 
 def test_dockerfile_documents_data_dirs_and_healthcheck() -> None:
     dockerfile = _read("Dockerfile")
 
+    assert "ARG AGH_VERSION=0.0.0" in dockerfile
     assert "ENV AGH_DATA_DIR=/data" in dockerfile
+    assert (
+        "SETUPTOOLS_SCM_PRETEND_VERSION_FOR_AGH=${AGH_VERSION} uv sync --locked --no-dev"
+        in dockerfile
+    )
     assert "mkdir -p /data/logs /data/secrets /data/packs" in dockerfile
     assert "EXPOSE 8912" in dockerfile
     assert "HEALTHCHECK" in dockerfile

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=68", "setuptools-scm>=8", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agh"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Agent Guidance Hub"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,9 @@ include = ["agh*"]
 
 [tool.setuptools.package-data]
 "agh.server.migrations" = ["*.sql"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
