@@ -75,10 +75,16 @@ El server es Docker-first. Usá Docker Compose con la imagen publicada y un volu
 docker compose up -d
 ```
 
-El compose file usa:
+El compose file usa `latest` por defecto a través de `AGH_IMAGE_TAG`:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
+```
+
+Para pinnear deployments de producción, definí un release tag:
+
+```bash
+AGH_IMAGE_TAG=0.1.2 docker compose up -d
 ```
 
 Para un comando directo con `docker run`, `/data`, logs, healthcheck, backup y upgrades, mirá [Operaciones](operations.md).

@@ -23,10 +23,16 @@ AGH_DATA_DIR=/data
 docker compose up -d
 ```
 
-El compose file usa la imagen publicada del release y un named volume que sobrevive reemplazos del container:
+El compose file usa la imagen publicada y un named volume que sobrevive reemplazos del container. Por defecto usa `latest`:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
+```
+
+Para pinnear deployments de producción, definí un release tag:
+
+```bash
+AGH_IMAGE_TAG=0.1.2 docker compose up -d
 ```
 
 ## Comando directo
@@ -34,7 +40,7 @@ ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
 ```bash
 docker run --rm -p 8912:8912 -v agh-data:/data \
   -e AGH_BOOTSTRAP_OWNER_EMAIL=owner@example.com \
-  ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+  ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
 ```
 
 Usá un named volume, bind mount o volumen de la plataforma que sobreviva reemplazos del container.

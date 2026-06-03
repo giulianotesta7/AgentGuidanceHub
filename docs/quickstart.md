@@ -10,10 +10,10 @@ Run AGH with the published image and persistent state under `/data`:
 docker compose up -d
 ```
 
-The compose file uses:
+The compose file defaults to the latest published image:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
 ```
 
 Check the server:

@@ -1,6 +1,6 @@
 services:
   agh:
-    image: ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+    image: ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
     ports:
       - "8912:8912"
     volumes:
