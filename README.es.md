@@ -38,10 +38,16 @@ Levantá la imagen publicada del server con Docker Compose:
 docker compose up -d
 ```
 
-El compose file usa por defecto:
+El compose file usa por defecto la imagen publicada más reciente:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
+```
+
+Para pinnear un deployment de producción, definí `AGH_IMAGE_TAG` antes de levantar Compose:
+
+```bash
+AGH_IMAGE_TAG=0.1.2 docker compose up -d
 ```
 
 Instalá el CLI local y logueate con el primer token owner:

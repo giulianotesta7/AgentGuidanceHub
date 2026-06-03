@@ -38,10 +38,16 @@ Run the published server image with Docker Compose:
 docker compose up -d
 ```
 
-The default compose file uses:
+The default compose file uses the latest published image:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
+```
+
+To pin a production deployment, set `AGH_IMAGE_TAG` before starting Compose:
+
+```bash
+AGH_IMAGE_TAG=0.1.2 docker compose up -d
 ```
 
 Install the local CLI, then log in with the first owner token:

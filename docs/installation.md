@@ -75,10 +75,16 @@ The server is Docker-first. Use Docker Compose with the published image and a pe
 docker compose up -d
 ```
 
-The compose file uses:
+The compose file defaults to `latest` through `AGH_IMAGE_TAG`:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
+ghcr.io/giulianotesta7/agent-guidance-hub:${AGH_IMAGE_TAG:-latest}
+```
+
+Pin production deployments by setting a release tag:
+
+```bash
+AGH_IMAGE_TAG=0.1.2 docker compose up -d
 ```
 
 For a direct `docker run` command, `/data`, logs, healthcheck, backup, and upgrade notes, see [Operations](operations.md).
