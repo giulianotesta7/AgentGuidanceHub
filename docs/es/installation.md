@@ -78,7 +78,7 @@ docker compose up -d
 El compose file usa:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0
+ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
 ```
 
 Para un comando directo con `docker run`, `/data`, logs, healthcheck, backup y upgrades, mirá [Operaciones](operations.md).

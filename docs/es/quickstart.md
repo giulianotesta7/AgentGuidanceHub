@@ -13,7 +13,7 @@ docker compose up -d
 El compose file usa:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0
+ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
 ```
 
 Chequeá el server:

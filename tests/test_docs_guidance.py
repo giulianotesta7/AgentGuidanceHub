@@ -12,7 +12,7 @@ def test_readme_is_docker_first_landing_page_with_doc_links() -> None:
         "Self-hosted agent instructions and skills",
         "[Español](README.es.md)",
         "docker compose up -d",
-        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
         "uv tool install --force agh",
         "agh login",
         "agh sync",
@@ -46,7 +46,7 @@ def test_installation_docs_cover_cli_install_and_uninstall() -> None:
         "uv tool dir",
         "uv tool uninstall agh",
         "docker compose up -d",
-        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
     ]:
         assert expected in installation
 
@@ -57,7 +57,7 @@ def test_compose_uses_published_ghcr_image_and_data_volume() -> None:
     for expected in [
         "services:",
         "agh:",
-        "image: ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+        "image: ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
         '"8912:8912"',
         "agh-data:/data",
         "AGH_BOOTSTRAP_OWNER_EMAIL: owner@example.com",
@@ -92,7 +92,7 @@ def test_quickstart_documents_first_run_and_first_pull() -> None:
 
     for expected in [
         "docker compose up -d",
-        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
         "/data/secrets/initial_owner_token",
         "uv tool install --force agh",
         "agh --help",
@@ -139,7 +139,7 @@ def test_operations_docs_cover_docker_runtime_layout_and_maintenance() -> None:
     for expected in [
         "AGH_DATA_DIR=/data",
         "docker compose up -d",
-        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
         "docker run --rm -p 8912:8912 -v agh-data:/data \\",
         "/data/agh.sqlite3",
         "/data/packs/",
@@ -235,7 +235,7 @@ def test_spanish_readme_and_docs_mirror_core_flows() -> None:
         "Instrucciones y skills",
         "[English](README.md)",
         "docker compose up -d",
-        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+        "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
         "uv tool install --force agh",
         "agh sync",
         "agh pull --dry-run",
@@ -253,13 +253,13 @@ def test_spanish_readme_and_docs_mirror_core_flows() -> None:
             "uv tool install --force agh",
             "uv tool install --force .",
             "docker compose up -d",
-            "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+            "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
             "agh --help",
             "uv tool uninstall agh",
         ],
         "docs/es/quickstart.md": [
             "docker compose up -d",
-            "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+            "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
             "uv tool install --force agh",
             "agh login",
             "agh project create",
@@ -275,7 +275,7 @@ def test_spanish_readme_and_docs_mirror_core_flows() -> None:
         "docs/es/operations.md": [
             "AGH_DATA_DIR=/data",
             "docker compose up -d",
-            "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0",
+            "ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1",
             "curl http://127.0.0.1:8912/api/v1/health",
             "Backup",
             "Upgrade",

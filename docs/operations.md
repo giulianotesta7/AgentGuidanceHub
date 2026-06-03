@@ -26,7 +26,7 @@ docker compose up -d
 The compose file uses the published release image and a named volume that survives container replacement:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0
+ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
 ```
 
 ## Direct run command
@@ -34,7 +34,7 @@ ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0
 ```bash
 docker run --rm -p 8912:8912 -v agh-data:/data \
   -e AGH_BOOTSTRAP_OWNER_EMAIL=owner@example.com \
-  ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0
+  ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
 ```
 
 Use a named volume, bind mount, or platform volume that survives container replacement.

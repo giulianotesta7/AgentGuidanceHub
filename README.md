@@ -41,7 +41,7 @@ docker compose up -d
 The default compose file uses:
 
 ```text
-ghcr.io/giulianotesta7/agent-guidance-hub:0.1.0
+ghcr.io/giulianotesta7/agent-guidance-hub:0.1.1
 ```
 
 Install the local CLI, then log in with the first owner token:
