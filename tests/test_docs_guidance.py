@@ -41,6 +41,8 @@ def test_readme_consolidates_guides_and_bookmarks() -> None:
         "agh login",
         "agh config show",
         "agh project create",
+        "exact project names",
+        "All-digit values are treated as ids",
         "agh sync",
         "agh agent select opencode",
         "agh pull --dry-run",

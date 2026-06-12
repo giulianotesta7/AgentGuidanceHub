@@ -30,6 +30,15 @@ def validate_slug(value: str, *, label: str = "slug") -> str:
     return value
 
 
+def validate_project_name(value: str) -> str:
+    cleaned = value.strip()
+    if not cleaned:
+        raise ValueError("project name is required")
+    if cleaned.isdigit():
+        raise ValueError("project name cannot contain only digits")
+    return cleaned
+
+
 def is_semver(value: str) -> bool:
     return bool(_SEMVER_RE.fullmatch(value))
 

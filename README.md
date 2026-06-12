@@ -231,6 +231,8 @@ agh project update prj_... --name "App API"
 agh project delete prj_...
 ```
 
+Project commands that take a project reference accept `prj_...` ids or exact project names. All-digit values are treated as ids, and project names cannot contain only digits.
+
 Assign packs to a project:
 
 ```bash

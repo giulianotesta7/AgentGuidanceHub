@@ -20,7 +20,7 @@ from pydantic import BaseModel  # pyright: ignore[reportMissingImports]
 from agh.common.checksums import managed_payload_checksum
 from agh.common.ids import generate_prefixed_id, is_valid_prefixed_id
 from agh.common.repo_url import normalize_repo_url
-from agh.common.validation import PackRef, parse_pack_ref
+from agh.common.validation import PackRef, parse_pack_ref, validate_project_name
 from agh.server.auth import CurrentUser, get_current_user
 from agh.server.db import connect_database
 
@@ -69,12 +69,12 @@ def _project_response(row: sqlite3.Row) -> dict[str, str | bool]:
 
 
 def _clean_name(name: str) -> str:
-    cleaned = name.strip()
-    if not cleaned:
+    try:
+        return validate_project_name(name)
+    except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="project name is required"
-        )
-    return cleaned
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
 
 
 def _normalize_repo_or_400(repo_url: str) -> str:
@@ -140,8 +140,17 @@ def _ensure_member_can_read_project(
     return row
 
 
-def _raise_duplicate_repo(exc: sqlite3.IntegrityError) -> None:
-    if "ux_projects_active_repo_url_normalized" in str(exc) or "UNIQUE" in str(exc):
+def _raise_project_integrity_error(exc: sqlite3.IntegrityError) -> None:
+    message = str(exc)
+    if "projects.name" in message or "ux_projects_name" in message:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="project name already exists",
+        ) from exc
+    if (
+        "projects.repo_url_normalized" in message
+        or "ux_projects_active_repo_url_normalized" in message
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="active project repo URL already exists",
@@ -454,6 +463,44 @@ def list_projects(
         connection.close()
 
 
+@router.get("/by-name/{name:path}")
+def get_project_by_name(
+    name: str,
+    request: Request,
+    current_user: CurrentUser = Depends(get_current_user),
+) -> dict[str, str]:
+    connection = _connect(request)
+    try:
+        if current_user.role in {"owner", "admin"}:
+            row = connection.execute(
+                """
+                SELECT id, name
+                FROM projects
+                WHERE name = ? AND active = 1
+                """,
+                (name,),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                """
+                SELECT projects.id, projects.name
+                FROM projects
+                JOIN project_members ON project_members.project_id = projects.id
+                WHERE projects.name = ?
+                  AND project_members.user_id = ?
+                  AND projects.active = 1
+                """,
+                (name, current_user.id),
+            ).fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="project not found"
+            )
+        return {"id": row["id"], "name": row["name"]}
+    finally:
+        connection.close()
+
+
 @router.get("/{project_id}/packs")
 def list_project_packs(
     project_id: str,
@@ -697,7 +744,7 @@ def create_project(
             connection.commit()
         except sqlite3.IntegrityError as exc:
             connection.rollback()
-            _raise_duplicate_repo(exc)
+            _raise_project_integrity_error(exc)
         return _project_response(_get_project(connection, project_id))
     finally:
         connection.close()
@@ -753,7 +800,7 @@ def update_project(
                 )
         except sqlite3.IntegrityError as exc:
             connection.rollback()
-            _raise_duplicate_repo(exc)
+            _raise_project_integrity_error(exc)
         except Exception:
             connection.rollback()
             raise

@@ -68,6 +68,22 @@ def test_admin_project_crud_and_duplicate_active_repo_conflicts(
     }
     assert created["id"].startswith("prj_")
 
+    duplicate_name = client.post(
+        "/api/v1/projects",
+        json={"name": "Platform", "repo_url": "https://github.com/org/platform.git"},
+        headers=_auth(owner_token),
+    )
+    assert duplicate_name.status_code == 409
+    assert duplicate_name.json()["detail"] == "project name already exists"
+
+    digit_only_name = client.post(
+        "/api/v1/projects",
+        json={"name": "12345", "repo_url": "https://github.com/org/numeric.git"},
+        headers=_auth(owner_token),
+    )
+    assert digit_only_name.status_code == 400
+    assert "cannot contain only digits" in digit_only_name.json()["detail"]
+
     duplicate = client.post(
         "/api/v1/projects",
         json={"name": "Duplicate", "repo_url": "https://github.com/org/app.git"},
@@ -144,6 +160,14 @@ def test_admin_project_crud_and_duplicate_active_repo_conflicts(
     assert patched.status_code == 200, patched.text
     assert patched.json()["name"] == "Platform API"
     assert patched.json()["repo_url_normalized"] == "github.com/org/api"
+
+    digit_only_rename = client.patch(
+        f"/api/v1/projects/{created['id']}",
+        json={"name": "12345"},
+        headers=_auth(owner_token),
+    )
+    assert digit_only_rename.status_code == 400
+    assert "cannot contain only digits" in digit_only_rename.json()["detail"]
 
     second = _create_project(
         client, owner_token, name="Other", repo_url="git@github.com:org/other.git"
@@ -245,6 +269,54 @@ def test_member_reads_only_active_developer_projects_and_membership_removal_revo
     assert client.get("/api/v1/projects", headers=_auth(member_token)).json() == {
         "projects": []
     }
+
+
+def test_project_name_resolver_is_exact_active_and_visibility_scoped(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client, owner_token = _client_with_owner(tmp_path, monkeypatch)
+    member, member_token = _create_user(
+        client, owner_token, "dev@example.com", "member"
+    )
+    visible = _create_project(
+        client, owner_token, name="Visible", repo_url="git@github.com:org/visible.git"
+    )
+    _create_project(
+        client, owner_token, name="Hidden", repo_url="git@github.com:org/hidden.git"
+    )
+    assert (
+        client.put(
+            f"/api/v1/projects/{visible['id']}/members/{member['id']}",
+            headers=_auth(owner_token),
+        ).status_code
+        == 200
+    )
+
+    resolved = client.get(
+        "/api/v1/projects/by-name/Visible", headers=_auth(owner_token)
+    )
+    assert resolved.status_code == 200
+    assert resolved.json() == {"id": visible["id"], "name": "Visible"}
+
+    member_resolved = client.get(
+        "/api/v1/projects/by-name/Visible", headers=_auth(member_token)
+    )
+    assert member_resolved.status_code == 200
+    assert member_resolved.json()["id"] == visible["id"]
+
+    assert (
+        client.get(
+            "/api/v1/projects/by-name/visible", headers=_auth(owner_token)
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            "/api/v1/projects/by-name/Hidden", headers=_auth(member_token)
+        ).status_code
+        == 404
+    )
+    assert client.get("/api/v1/projects/by-name/Visible").status_code == 401
 
 
 def test_inactive_projects_are_denied_to_members_and_membership_changes(
