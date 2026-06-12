@@ -17,6 +17,7 @@ from agh.common.validation import (
     is_valid_email,
     is_valid_slug,
     parse_pack_ref,
+    validate_project_name,
     validate_pack_publish_ref,
 )
 
@@ -55,6 +56,15 @@ def test_slug_validation_rejects_latest_and_bad_shapes() -> None:
     assert not is_valid_slug("latest")
     assert not is_valid_slug("BadCase")
     assert not is_valid_slug("-start")
+
+
+def test_project_name_validation_trims_and_rejects_digit_only_names() -> None:
+    assert validate_project_name("  Agent Guidance Hub  ") == "Agent Guidance Hub"
+
+    with pytest.raises(ValueError, match="project name is required"):
+        validate_project_name("   ")
+    with pytest.raises(ValueError, match="cannot contain only digits"):
+        validate_project_name("12345")
 
 
 def test_pack_ref_parsing_and_publish_rules() -> None:

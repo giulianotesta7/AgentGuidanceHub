@@ -455,6 +455,66 @@ def test_cli_project_mutation_commands_use_human_output(tmp_path: Path) -> None:
     assert '"repo_url_normalized"' not in project_get.stdout
 
 
+def test_cli_project_refs_resolve_names_and_keep_numeric_refs_as_ids(
+    monkeypatch,
+) -> None:
+    from agh.cli import main as cli_main
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_api(method: str, path: str, **_kwargs):
+        calls.append((method, path))
+        if path == "/projects/by-name/API":
+            return {"id": "prj_2", "name": "API"}
+        if path in {"/projects/prj_2", "/projects/12345"}:
+            return {"id": path.rsplit("/", 1)[1], "name": "API", "active": True}
+        if path == "/projects/prj_2/members/usr_2":
+            return {"project_id": "prj_2", "user_id": "usr_2"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cli_main, "_api_request", fake_api)
+    runner = CliRunner()
+    by_name = runner.invoke(cli_app, ["project", "get", "API"])
+    member_by_name = runner.invoke(
+        cli_app, ["project", "member", "add", "API", "usr_2"]
+    )
+    numeric = runner.invoke(cli_app, ["project", "get", "12345"])
+
+    assert by_name.exit_code == 0, by_name.stdout
+    assert "Project ID: prj_2" in by_name.stdout
+    assert member_by_name.exit_code == 0, member_by_name.stdout
+    assert member_by_name.stdout == "Added user usr_2 to project prj_2.\n"
+    assert numeric.exit_code == 0, numeric.stdout
+    assert "Project ID: 12345" in numeric.stdout
+
+    assert calls.count(("GET", "/projects/by-name/API")) == 2
+    assert ("GET", "/projects/12345") in calls
+    assert ("GET", "/projects/by-name/12345") not in calls
+
+
+def test_cli_project_name_validation_rejects_digit_only_names_without_api_call(
+    monkeypatch,
+) -> None:
+    from agh.cli import main as cli_main
+
+    calls = []
+    monkeypatch.setattr(
+        cli_main, "_api_request", lambda *args, **kwargs: calls.append(args)
+    )
+    runner = CliRunner()
+    created = runner.invoke(
+        cli_app,
+        ["project", "create", "12345", "--repo-url", "https://github.com/org/x.git"],
+    )
+    updated = runner.invoke(cli_app, ["project", "update", "prj_2", "--name", "12345"])
+
+    assert created.exit_code == 2, created.stdout
+    assert "project name cannot contain only digits" in created.stdout
+    assert updated.exit_code == 2, updated.stdout
+    assert "project name cannot contain only digits" in updated.stdout
+    assert calls == []
+
+
 def test_cli_read_commands_show_empty_messages(monkeypatch) -> None:
     from agh.cli import main as cli_main
 

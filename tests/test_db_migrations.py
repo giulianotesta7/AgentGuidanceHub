@@ -54,7 +54,10 @@ def test_run_migrations_creates_initial_schema(tmp_path: Path) -> None:
         applied = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in applied] == ["001_initial_schema"]
+        assert [row[0] for row in applied] == [
+            "001_initial_schema",
+            "002_unique_project_names",
+        ]
     finally:
         connection.close()
 
@@ -72,7 +75,10 @@ def test_run_migrations_is_safe_for_concurrent_startup(tmp_path: Path) -> None:
         rows = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in rows] == ["001_initial_schema"]
+        assert [row[0] for row in rows] == [
+            "001_initial_schema",
+            "002_unique_project_names",
+        ]
         assert table_names(connection) >= {
             "users",
             "tokens",
@@ -95,7 +101,10 @@ def test_run_migrations_is_idempotent_on_existing_connection() -> None:
         rows = connection.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row[0] for row in rows] == ["001_initial_schema"]
+        assert [row[0] for row in rows] == [
+            "001_initial_schema",
+            "002_unique_project_names",
+        ]
     finally:
         connection.close()
 
@@ -115,6 +124,53 @@ def test_failed_migration_rolls_back_statements_and_version(monkeypatch) -> None
         assert "partial_migration_table" not in table_names(connection)
         rows = connection.execute("SELECT version FROM schema_migrations").fetchall()
         assert rows == []
+    finally:
+        connection.close()
+
+
+def test_project_name_uniqueness_migration_fails_on_existing_duplicates() -> None:
+    connection = sqlite3.connect(":memory:")
+    try:
+        initial_schema = Path("agh/server/migrations/001_initial_schema.sql").read_text(
+            encoding="utf-8"
+        )
+        connection.executescript(initial_schema)
+        connection.execute(
+            "CREATE TABLE schema_migrations (version TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT (datetime('now')))"
+        )
+        connection.execute(
+            "INSERT INTO schema_migrations (version) VALUES (?)",
+            ("001_initial_schema",),
+        )
+        connection.executemany(
+            """
+            INSERT INTO projects (id, name, repo_url, repo_url_normalized)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (
+                    "prj_0000000000000001",
+                    "Duplicate",
+                    "https://github.com/acme/one.git",
+                    "github.com/acme/one",
+                ),
+                (
+                    "prj_0000000000000002",
+                    "Duplicate",
+                    "https://github.com/acme/two.git",
+                    "github.com/acme/two",
+                ),
+            ],
+        )
+        connection.commit()
+
+        with pytest.raises(sqlite3.IntegrityError):
+            run_migrations(connection)
+
+        rows = connection.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert [row[0] for row in rows] == ["001_initial_schema"]
     finally:
         connection.close()
 

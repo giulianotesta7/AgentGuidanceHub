@@ -36,12 +36,14 @@ from agh.cli.config import (
 )
 from agh.cli.pack_init import PackInitError, init_pack_template
 from agh.cli.pack_publish import PackPublishBuildError, build_pack_publish_payload
+from agh.cli.project_refs import ProjectRefResolutionError, resolve_project_ref
 from agh.cli.workspace_pull import (
     WorkspacePullError,
     WorkspacePullResult,
     pull_workspace,
 )
 from agh.cli.workspace_sync import SyncResult, WorkspaceSyncError, sync_workspace
+from agh.common.validation import validate_project_name
 
 APP_HELP = """Agent Guidance Hub — manage and distribute agent guidance packs.
 
@@ -65,6 +67,7 @@ Global options:
 Arguments:
   Run `agh <command> --help` for command-specific options and arguments.
 """
+PROJECT_REF_HELP = "Project id or exact name. Numeric refs are treated as ids."
 
 
 class AghHelpGroup(TyperGroup):
@@ -262,6 +265,20 @@ def _echo_payload(payload: Any, *, allow_plain_token: bool = False) -> None:
 
 def _body_without_none(**fields: Any) -> dict[str, Any]:
     return {key: value for key, value in fields.items() if value is not None}
+
+
+def _clean_project_name_or_exit(name: str) -> str:
+    try:
+        return validate_project_name(name)
+    except ValueError as exc:
+        _fail(str(exc), code=2)
+
+
+def _resolve_project_ref(project_ref: str) -> str:
+    try:
+        return resolve_project_ref(project_ref, _api_request)
+    except ProjectRefResolutionError as exc:
+        _fail(str(exc))
 
 
 @app.command("pull", help="Pull assigned guidance packs into this repository.")
@@ -827,22 +844,28 @@ def project_create(
         typer.Option("--repo-url", help="Git repository URL linked to the project."),
     ],
 ) -> None:
+    cleaned_name = _clean_project_name_or_exit(name)
     _echo_project_success(
         "Created",
-        _api_request("POST", "/projects", body={"name": name, "repo_url": repo_url}),
+        _api_request(
+            "POST", "/projects", body={"name": cleaned_name, "repo_url": repo_url}
+        ),
     )
 
 
-@project_app.command("get", help="Show one project by id.")
+@project_app.command("get", help="Show one project by id or exact name.")
 def project_get(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
 ) -> None:
-    _echo_project_detail(_api_request("GET", project_path(project_id)))
+    resolved_project_id = _resolve_project_ref(project_id)
+    _echo_project_detail(_api_request("GET", project_path(resolved_project_id)))
 
 
-@project_app.command("update", help="Update project name, repo URL, or active flag.")
+@project_app.command(
+    "update", help="Update project name, repo URL, or active flag by id or exact name."
+)
 def project_update(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
     name: Annotated[
         str | None, typer.Option("--name", help="New project name.")
     ] = None,
@@ -855,21 +878,28 @@ def project_update(
         typer.Option("--active/--inactive", help="Set whether the project is active."),
     ] = None,
 ) -> None:
+    cleaned_name = _clean_project_name_or_exit(name) if name is not None else None
+    resolved_project_id = _resolve_project_ref(project_id)
     _echo_project_success(
         "Updated",
         _api_request(
             "PATCH",
-            project_path(project_id),
-            body=_body_without_none(name=name, repo_url=repo_url, active=active),
+            project_path(resolved_project_id),
+            body=_body_without_none(
+                name=cleaned_name,
+                repo_url=repo_url,
+                active=active,
+            ),
         ),
     )
 
 
-@project_app.command("delete", help="Deactivate a project.")
+@project_app.command("delete", help="Deactivate a project by id or exact name.")
 def project_delete(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
 ) -> None:
-    _echo_project_deactivated(_api_request("DELETE", project_path(project_id)))
+    resolved_project_id = _resolve_project_ref(project_id)
+    _echo_project_deactivated(_api_request("DELETE", project_path(resolved_project_id)))
 
 
 def project_path(project_id: str) -> str:
@@ -950,26 +980,28 @@ def project_member_main(ctx: typer.Context) -> None:
 
 @project_member_app.command("add", help="Add an active user as a project developer.")
 def project_member_add(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
     user_id: Annotated[str, typer.Argument(help="User id, e.g. usr_...")],
 ) -> None:
+    resolved_project_id = _resolve_project_ref(project_id)
     _echo_project_member_success(
         "Added",
-        _api_request("PUT", f"/projects/{project_id}/members/{user_id}"),
-        project_id=project_id,
+        _api_request("PUT", f"/projects/{resolved_project_id}/members/{user_id}"),
+        project_id=resolved_project_id,
         user_id=user_id,
     )
 
 
 @project_member_app.command("remove", help="Remove a project developer membership.")
 def project_member_remove(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
     user_id: Annotated[str, typer.Argument(help="User id, e.g. usr_...")],
 ) -> None:
+    resolved_project_id = _resolve_project_ref(project_id)
     _echo_project_member_success(
         "Removed",
-        _api_request("DELETE", f"/projects/{project_id}/members/{user_id}"),
-        project_id=project_id,
+        _api_request("DELETE", f"/projects/{resolved_project_id}/members/{user_id}"),
+        project_id=resolved_project_id,
         user_id=user_id,
     )
 
@@ -984,30 +1016,34 @@ def project_pack_main(ctx: typer.Context) -> None:
 
 @project_pack_app.command("list", help="List project pack assignments.")
 def project_pack_list(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
 ) -> None:
-    _echo_project_pack_list(_api_request("GET", f"/projects/{project_id}/packs"))
+    resolved_project_id = _resolve_project_ref(project_id)
+    _echo_project_pack_list(
+        _api_request("GET", f"/projects/{resolved_project_id}/packs")
+    )
 
 
 @project_pack_app.command("add", help="Assign a pack to a project.")
 def project_pack_add(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
     pack_ref: Annotated[str, typer.Argument(help="Pack ref, e.g. acme/name@1.0.0.")],
     position: Annotated[int, typer.Option("--position", help="Assignment order.")] = 0,
 ) -> None:
+    resolved_project_id = _resolve_project_ref(project_id)
     _echo_project_pack_assigned(
         _api_request(
             "POST",
-            f"/projects/{project_id}/packs",
+            f"/projects/{resolved_project_id}/packs",
             body={"pack_ref": pack_ref, "position": position},
         ),
-        project_id=project_id,
+        project_id=resolved_project_id,
     )
 
 
 @project_pack_app.command("update", help="Update a project pack assignment.")
 def project_pack_update(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
     assignment_id: Annotated[str, typer.Argument(help="Assignment id, e.g. asn_...")],
     pack_ref: Annotated[
         str | None, typer.Option("--pack-ref", help="New pack ref.")
@@ -1020,27 +1056,31 @@ def project_pack_update(
         typer.Option("--active/--inactive", help="Set whether assignment is active."),
     ] = None,
 ) -> None:
+    resolved_project_id = _resolve_project_ref(project_id)
     _echo_project_pack_updated(
         _api_request(
             "PATCH",
-            f"/projects/{project_id}/packs/{assignment_id}",
+            f"/projects/{resolved_project_id}/packs/{assignment_id}",
             body=_body_without_none(
                 pack_ref=pack_ref, position=position, active=active
             ),
         ),
-        project_id=project_id,
+        project_id=resolved_project_id,
         assignment_id=assignment_id,
     )
 
 
 @project_pack_app.command("remove", help="Deactivate a project pack assignment.")
 def project_pack_remove(
-    project_id: Annotated[str, typer.Argument(help="Project id, e.g. prj_...")],
+    project_id: Annotated[str, typer.Argument(help=PROJECT_REF_HELP)],
     assignment_id: Annotated[str, typer.Argument(help="Assignment id, e.g. asn_...")],
 ) -> None:
+    resolved_project_id = _resolve_project_ref(project_id)
     _echo_project_pack_removed(
-        _api_request("DELETE", f"/projects/{project_id}/packs/{assignment_id}"),
-        project_id=project_id,
+        _api_request(
+            "DELETE", f"/projects/{resolved_project_id}/packs/{assignment_id}"
+        ),
+        project_id=resolved_project_id,
         assignment_id=assignment_id,
     )
 
