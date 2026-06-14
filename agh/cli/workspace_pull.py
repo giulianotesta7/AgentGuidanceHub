@@ -13,6 +13,7 @@ import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections.abc import Iterable
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -56,6 +57,7 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 
 _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 _CHECKSUM_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_CACHE_STAGE_PREFIX = ".agh-pull-stage-"
 GIT_SUBPROCESS_TIMEOUT_SECONDS = 5
 
 
@@ -94,6 +96,24 @@ class WorkspacePullCacheResult:
     cache_dir: Path
     lock_path: Path
     artifacts: list[CachedArtifact]
+
+
+@dataclass(frozen=True)
+class _StagedCacheResult:
+    """Cache artifacts prepared under AGH-owned staging directories."""
+
+    cache_dir: Path
+    stage_dirs: list[Path]
+    artifacts: list[CachedArtifact]
+
+
+@dataclass(frozen=True)
+class _PullRollbackEntry:
+    """AGH-owned path that can be restored during staged pull promotion."""
+
+    final_path: Path
+    backup_path: Path | None
+    kind: str
 
 
 @dataclass(frozen=True)
@@ -496,6 +516,109 @@ def write_cache_artifacts(
     return WorkspacePullCacheResult(
         cache_dir=cache_dir, lock_path=agh_dir / "lock.toml", artifacts=cached
     )
+
+
+def _stage_cache_artifacts(
+    workspace: Path, *, artifacts: list[DownloadedArtifact]
+) -> _StagedCacheResult:
+    root = workspace.resolve()
+    cache_dir = _workspace_cache_dir(root)
+    _ensure_cache_root_safe(root)
+    staged_by_pack: dict[tuple[str, str, str], Path] = {}
+    cached: list[CachedArtifact] = []
+    try:
+        for artifact in artifacts:
+            key = (artifact.domain, artifact.name, artifact.version)
+            stage_dir = staged_by_pack.get(key)
+            if stage_dir is None:
+                stage_dir = _make_cache_stage_dir(
+                    cache_dir=cache_dir,
+                    domain=artifact.domain,
+                    name=artifact.name,
+                    version=artifact.version,
+                )
+                staged_by_pack[key] = stage_dir
+            artifact_path = _safe_relative_path(artifact.path)
+            _write_cache_file(stage_dir / artifact_path, artifact.content)
+            final_cache_path = (
+                cache_dir
+                / artifact.domain
+                / artifact.name
+                / artifact.version
+                / artifact_path
+            )
+            cached.append(
+                CachedArtifact(
+                    pack_ref=artifact.pack_ref,
+                    path=artifact.path,
+                    target_path=artifact.target_path,
+                    checksum=artifact.checksum,
+                    cache_path=final_cache_path.relative_to(root),
+                )
+            )
+    except Exception:
+        _cleanup_cache_stage_dirs(staged_by_pack.values(), cache_dir=cache_dir)
+        raise
+    return _StagedCacheResult(
+        cache_dir=cache_dir, stage_dirs=list(staged_by_pack.values()), artifacts=cached
+    )
+
+
+def _make_cache_stage_dir(
+    *, cache_dir: Path, domain: str, name: str, version: str
+) -> Path:
+    pack_parent = cache_dir / domain / name
+    _ensure_safe_directory_boundary(cache_dir, pack_parent)
+    pack_parent.mkdir(parents=True, exist_ok=True)
+    return Path(
+        tempfile.mkdtemp(prefix=f"{_CACHE_STAGE_PREFIX}{version}-", dir=pack_parent)
+    )
+
+
+def _cleanup_stale_cache_staging_dirs(workspace: Path, *, manifest: object) -> None:
+    root = workspace.resolve()
+    cache_dir = _workspace_cache_dir(root)
+    _ensure_cache_root_safe(root)
+    manifest = _validate_manifest(manifest)
+    for pack in _manifest_packs(manifest):
+        domain, name, _version = _parse_resolved_pack_ref(_pack_id(pack))
+        pack_parent = cache_dir / domain / name
+        _ensure_safe_directory_boundary(cache_dir, pack_parent)
+        if not pack_parent.exists():
+            continue
+        if pack_parent.is_symlink() or not pack_parent.is_dir():
+            raise WorkspacePullError(
+                f"refusing to clean unsafe AGH cache path: {pack_parent}", code=2
+            )
+        _cleanup_cache_stage_dirs(
+            (
+                child
+                for child in pack_parent.iterdir()
+                if child.name.startswith(_CACHE_STAGE_PREFIX)
+            ),
+            cache_dir=cache_dir,
+        )
+
+
+def _cleanup_cache_stage_dirs(stage_dirs: Iterable[Path], *, cache_dir: Path) -> None:
+    for stage_dir in stage_dirs:
+        if not stage_dir.name.startswith(_CACHE_STAGE_PREFIX):
+            raise WorkspacePullError(
+                f"refusing to clean non-staging AGH cache path: {stage_dir}", code=2
+            )
+        try:
+            _ensure_safe_directory_boundary(cache_dir, stage_dir.parent)
+        except ValueError as exc:
+            raise WorkspacePullError(
+                f"refusing to clean staging path outside AGH cache: {stage_dir}",
+                code=2,
+            ) from exc
+        if not stage_dir.exists() and not stage_dir.is_symlink():
+            continue
+        if stage_dir.is_symlink() or stage_dir.is_file():
+            stage_dir.unlink()
+        else:
+            shutil.rmtree(stage_dir)
 
 
 def _clear_manifest_cache_dirs(workspace: Path, *, manifest: object) -> None:

@@ -7,8 +7,16 @@ from typing import Any, ClassVar
 
 import pytest
 
+import agh.cli.workspace_pull as workspace_pull
 from agh.cli.config import AghConfig
-from agh.cli.workspace_pull import WorkspacePullError, populate_cache_and_write_lock
+from agh.cli.workspace_pull import (
+    DownloadedArtifact,
+    WorkspacePullError,
+    _cleanup_cache_stage_dirs,
+    _cleanup_stale_cache_staging_dirs,
+    _stage_cache_artifacts,
+    populate_cache_and_write_lock,
+)
 from agh.common.checksums import managed_payload_checksum
 
 
@@ -73,6 +81,188 @@ def _manifest(*, content: str = "Use AGH.\n") -> dict[str, Any]:
             }
         ],
     }
+
+
+def _downloaded_artifact(*, content: str = "Use AGH.\n") -> DownloadedArtifact:
+    return DownloadedArtifact(
+        pack_ref="acme/onboarding@1.0.0",
+        path="instructions/AGENTS.md",
+        target_path="AGENTS.md",
+        checksum=managed_payload_checksum(content),
+        content=content,
+        kind="instruction",
+        target_agent="opencode",
+        domain="acme",
+        name="onboarding",
+        version="1.0.0",
+    )
+
+
+def _downloaded_extra_artifact(*, content: str = "Use Claude.\n") -> DownloadedArtifact:
+    return DownloadedArtifact(
+        pack_ref="acme/onboarding@1.0.0",
+        path="instructions/CLAUDE.md",
+        target_path="CLAUDE.md",
+        checksum=managed_payload_checksum(content),
+        content=content,
+        kind="instruction",
+        target_agent="claude",
+        domain="acme",
+        name="onboarding",
+        version="1.0.0",
+    )
+
+
+def test_stage_cache_artifacts_writes_sibling_stage_dir_only(tmp_path: Path) -> None:
+    staged = _stage_cache_artifacts(tmp_path, artifacts=[_downloaded_artifact()])
+
+    stage_dir = staged.stage_dirs[0]
+    assert stage_dir.parent == (
+        tmp_path / ".agh-cache" / "packs" / "acme" / "onboarding"
+    )
+    assert stage_dir.name.startswith(".agh-pull-stage-1.0.0-")
+    assert (stage_dir / "instructions" / "AGENTS.md").read_text(
+        encoding="utf-8"
+    ) == "Use AGH.\n"
+    assert staged.artifacts[0].cache_path == Path(
+        ".agh-cache/packs/acme/onboarding/1.0.0/instructions/AGENTS.md"
+    )
+    assert not (
+        tmp_path
+        / ".agh-cache"
+        / "packs"
+        / "acme"
+        / "onboarding"
+        / "1.0.0"
+        / "instructions"
+        / "AGENTS.md"
+    ).exists()
+
+
+def test_stage_cache_artifacts_failure_preserves_committed_cache_and_lock(
+    tmp_path: Path, monkeypatch
+) -> None:
+    committed = (
+        tmp_path
+        / ".agh-cache"
+        / "packs"
+        / "acme"
+        / "onboarding"
+        / "1.0.0"
+        / "instructions"
+        / "AGENTS.md"
+    )
+    committed.parent.mkdir(parents=True)
+    committed.write_text("previous cache\n", encoding="utf-8")
+    lock = tmp_path / ".agh" / "lock.toml"
+    lock.parent.mkdir()
+    lock.write_text("previous lock\n", encoding="utf-8")
+
+    def fail_cache_write(path: Path, _content: str) -> None:
+        raise OSError(f"staging failed at {path.name}")
+
+    monkeypatch.setattr(workspace_pull, "_write_cache_file", fail_cache_write)
+
+    with pytest.raises(OSError, match="staging failed"):
+        _stage_cache_artifacts(
+            tmp_path, artifacts=[_downloaded_artifact(content="new\n")]
+        )
+
+    assert committed.read_text(encoding="utf-8") == "previous cache\n"
+    assert lock.read_text(encoding="utf-8") == "previous lock\n"
+    assert not list(committed.parents[2].glob(".agh-pull-stage-*"))
+
+
+def test_stage_cache_artifacts_second_write_failure_cleans_partial_stage(
+    tmp_path: Path, monkeypatch
+) -> None:
+    committed = (
+        tmp_path
+        / ".agh-cache"
+        / "packs"
+        / "acme"
+        / "onboarding"
+        / "1.0.0"
+        / "instructions"
+        / "AGENTS.md"
+    )
+    committed.parent.mkdir(parents=True)
+    committed.write_text("previous cache\n", encoding="utf-8")
+    lock = tmp_path / ".agh" / "lock.toml"
+    lock.parent.mkdir()
+    lock.write_text("previous lock\n", encoding="utf-8")
+    write_cache_file = workspace_pull._write_cache_file
+
+    def fail_second_cache_write(path: Path, content: str) -> None:
+        if path.name == "CLAUDE.md":
+            raise OSError("staging failed on second artifact")
+        write_cache_file(path, content)
+
+    monkeypatch.setattr(workspace_pull, "_write_cache_file", fail_second_cache_write)
+
+    with pytest.raises(OSError, match="second artifact"):
+        _stage_cache_artifacts(
+            tmp_path,
+            artifacts=[
+                _downloaded_artifact(content="new\n"),
+                _downloaded_extra_artifact(),
+            ],
+        )
+
+    assert committed.read_text(encoding="utf-8") == "previous cache\n"
+    assert lock.read_text(encoding="utf-8") == "previous lock\n"
+    assert not list(committed.parents[2].glob(".agh-pull-stage-*"))
+
+
+def test_cleanup_stale_cache_staging_dirs_removes_only_agh_stage_siblings(
+    tmp_path: Path,
+) -> None:
+    pack_parent = tmp_path / ".agh-cache" / "packs" / "acme" / "onboarding"
+    stale = pack_parent / ".agh-pull-stage-1.0.0-old"
+    stale_file = stale / "instructions" / "AGENTS.md"
+    stale_file.parent.mkdir(parents=True)
+    stale_file.write_text("stale\n", encoding="utf-8")
+    committed = pack_parent / "1.0.0"
+    committed.mkdir()
+    unrelated = pack_parent / "manual-stage"
+    unrelated.mkdir()
+
+    _cleanup_stale_cache_staging_dirs(tmp_path, manifest=_manifest())
+
+    assert not stale.exists()
+    assert committed.exists()
+    assert unrelated.exists()
+
+
+def test_cleanup_cache_stage_dirs_rejects_stage_like_path_outside_cache(
+    tmp_path: Path,
+) -> None:
+    cache_dir = tmp_path / "workspace" / ".agh-cache" / "packs"
+    outside_stage = tmp_path / "outside" / ".agh-pull-stage-1.0.0-evil"
+    outside_stage.mkdir(parents=True)
+
+    with pytest.raises(WorkspacePullError, match="outside AGH cache"):
+        _cleanup_cache_stage_dirs([outside_stage], cache_dir=cache_dir)
+
+    assert outside_stage.exists()
+
+
+def test_cleanup_stale_cache_staging_dirs_unlinks_stage_symlink_without_target_delete(
+    tmp_path: Path,
+) -> None:
+    pack_parent = tmp_path / ".agh-cache" / "packs" / "acme" / "onboarding"
+    pack_parent.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_file = outside / "keep.txt"
+    outside_file.write_text("keep\n", encoding="utf-8")
+    stage_link = pack_parent / ".agh-pull-stage-1.0.0-link"
+    stage_link.symlink_to(outside, target_is_directory=True)
+
+    _cleanup_stale_cache_staging_dirs(tmp_path, manifest=_manifest())
+
+    assert outside_file.read_text(encoding="utf-8") == "keep\n"
+    assert not stage_link.is_symlink()
 
 
 def test_populate_cache_downloads_artifacts_and_writes_lock(tmp_path: Path) -> None:
