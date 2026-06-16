@@ -10,6 +10,7 @@ import pytest
 
 from agh.server import db
 from agh.server.db import connect_database, get_database_path, run_migrations
+from agh.common.ids import generate_prefixed_id, is_valid_prefixed_id
 
 
 def table_names(connection: sqlite3.Connection) -> set[str]:
@@ -46,6 +47,7 @@ def test_run_migrations_creates_initial_schema(tmp_path: Path) -> None:
             "packages",
             "package_versions",
             "project_packages",
+            "collections",
         }
         token_columns = column_names(connection, "tokens")
         assert "token_hash" in token_columns
@@ -58,6 +60,7 @@ def test_run_migrations_creates_initial_schema(tmp_path: Path) -> None:
             "001_initial_schema",
             "002_unique_project_names",
             "003_rename_packs_to_packages",
+            "004_collections",
         ]
     finally:
         connection.close()
@@ -80,6 +83,7 @@ def test_run_migrations_is_safe_for_concurrent_startup(tmp_path: Path) -> None:
             "001_initial_schema",
             "002_unique_project_names",
             "003_rename_packs_to_packages",
+            "004_collections",
         ]
         assert table_names(connection) >= {
             "users",
@@ -89,6 +93,7 @@ def test_run_migrations_is_safe_for_concurrent_startup(tmp_path: Path) -> None:
             "packages",
             "package_versions",
             "project_packages",
+            "collections",
         }
     finally:
         connection.close()
@@ -107,6 +112,7 @@ def test_run_migrations_is_idempotent_on_existing_connection() -> None:
             "001_initial_schema",
             "002_unique_project_names",
             "003_rename_packs_to_packages",
+            "004_collections",
         ]
     finally:
         connection.close()
@@ -272,5 +278,14 @@ def test_schema_enforces_core_uniqueness_and_foreign_keys() -> None:
             raise AssertionError(
                 "package_versions.package_id foreign key was not enforced"
             )
+
+        collection_columns = column_names(connection, "collections")
+        assert {"id", "name", "description", "active", "created_by"} <= collection_columns
     finally:
         connection.close()
+
+
+def test_collection_id_prefix_is_supported() -> None:
+    collection_id = generate_prefixed_id("col")
+
+    assert is_valid_prefixed_id(collection_id, "col")
