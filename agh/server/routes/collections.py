@@ -172,9 +172,14 @@ def _skill_names(storage_dir: Path) -> list[str]:
 
 
 def _validate_skill_only_package(
-    connection: sqlite3.Connection, package_id: str, version_ref: str
+    connection: sqlite3.Connection,
+    package_id: str,
+    version_ref: str,
+    version_row: sqlite3.Row | None = None,
 ) -> sqlite3.Row:
-    row = _resolve_package_version_row(connection, package_id, version_ref)
+    row = version_row or _resolve_package_version_row(
+        connection, package_id, version_ref
+    )
     storage_dir = Path(str(row["storage_path"]))
     if (storage_dir / "instructions" / "AGENTS.md").is_file():
         raise HTTPException(
@@ -560,11 +565,22 @@ def update_collection_package(
             if payload.package_ref is not None:
                 package_ref = _parse_package_ref_or_400(payload.package_ref)
                 package_row = _package_row_or_404(conn, package_ref)
+                effective_package_id = str(package_row["id"])
+                effective_version_ref = package_ref.version
+                fields["package_id"] = effective_package_id
+                fields["version_ref"] = effective_version_ref
+            else:
+                effective_package_id = str(current["package_id"])
+                effective_version_ref = str(current["version_ref"])
+            will_be_active = (
+                payload.active
+                if payload.active is not None
+                else bool(current["active"])
+            )
+            if will_be_active:
                 _validate_skill_only_package(
-                    conn, str(package_row["id"]), package_ref.version
+                    conn, effective_package_id, effective_version_ref
                 )
-                fields["package_id"] = str(package_row["id"])
-                fields["version_ref"] = package_ref.version
             if payload.position is not None:
                 fields["position"] = payload.position
             if payload.active is not None:
@@ -643,7 +659,10 @@ def list_skills(
                     conn, str(row["package_id"]), str(row["version_ref"])
                 )
                 _validate_skill_only_package(
-                    conn, str(row["package_id"]), str(version_row["version"])
+                    conn,
+                    str(row["package_id"]),
+                    str(version_row["version"]),
+                    version_row,
                 )
             except HTTPException:
                 continue
@@ -681,20 +700,31 @@ def resolve_skill(
     try:
         rows = _active_collection_package_rows(conn, collection_id)
         matched: sqlite3.Row | None = None
+        matched_version_row: sqlite3.Row | None = None
         for row in rows:
             if (
                 row["domain"] == requested_ref.domain
                 and row["name"] == requested_ref.name
-                and row["version_ref"] == requested_ref.version
             ):
-                matched = row
-                break
-        if matched is None:
+                resolved_version_row = _resolve_package_version_row(
+                    conn, str(row["package_id"]), str(row["version_ref"])
+                )
+                if requested_ref.version in {
+                    row["version_ref"],
+                    str(resolved_version_row["version"]),
+                }:
+                    matched = row
+                    matched_version_row = resolved_version_row
+                    break
+        if matched is None or matched_version_row is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="skill not found"
             )
         version_row = _validate_skill_only_package(
-            conn, str(matched["package_id"]), requested_ref.version
+            conn,
+            str(matched["package_id"]),
+            str(matched["version_ref"]),
+            matched_version_row,
         )
         if skill_name not in _skill_names(Path(str(version_row["storage_path"]))):
             raise HTTPException(

@@ -35,9 +35,9 @@ Chain strategy: feature-branch-chain
 ## Phase 2: Core Server Behavior
 
 - [x] 2.1A Implement collection CRUD endpoints with owner/admin mutation and member read/list behavior.
-- [x] 2.1B Implement collection package assignment endpoints with owner/admin authorization.
-- [x] 2.2 Add skill-only validation that rejects package artifacts containing `instructions/AGENTS.md` or `instructions/CLAUDE.md`.
-- [x] 2.3 Implement `GET /skills` and `GET /skills:resolve` for collection-backed skill discovery and concrete version resolution.
+- [x] 2.1B Implement collection package assignment endpoints with owner/admin authorization. _(PR 1B.1: assignment foundation)_
+- [x] 2.2 Add skill-only validation that rejects package artifacts containing `instructions/AGENTS.md` or `instructions/CLAUDE.md`. _(PR 1B.2: skill-only validation)_
+- [x] 2.3 Implement `GET /skills` and `GET /skills:resolve` for collection-backed skill discovery and concrete version resolution. _(PR 1B.2: skill discovery)_
 
 ## Phase 3: CLI Global Skills
 

@@ -101,6 +101,31 @@ Review budget: to be verified for PR 1B.2 against PR 1B.1 before opening the chi
 ## PR 1B.2 Verification
 
 - `uv run pytest tests/test_collection_package_assignments.py -q` → 14 passed.
-- Full verification pending after rebase/split cleanup.
+- `uv run ruff format --check agh/server/routes/collections.py tests/test_collection_package_assignments.py` → passed.
+- `uv run ruff check agh/server/routes/collections.py tests/test_collection_package_assignments.py` → passed.
+- `git diff --check feat/global-skill-collections...HEAD` → passed.
+- `uv run pytest -q` → 384 passed, 1 skipped.
 
 Remaining: PR 2 adds CLI global skills install/remove, agent default selection, and native path resolver.
+
+## PR 1B.2 Post-Verify Review Fixes
+
+Reliability blocker and contract warning fixes applied after formal verify passed.
+
+### Fixes Applied
+
+- `update_collection_package()` now revalidates the effective package/version for skill-only compliance whenever the assignment will remain/become active, even when `package_ref` is not supplied in the PATCH payload. This prevents a stored `@latest` assignment from being successfully patched (e.g., `position` or `active: true`) after `latest` drifts to an instruction-bearing package.
+- `GET /skills:resolve` now accepts either the stored requested ref (e.g., `acme/tool@latest`) or the concrete resolved ref returned by `GET /skills` (e.g., `acme/tool@1.2.0`), while still requiring the resolved package to be collection-authorized and skill-only.
+- `_validate_skill_only_package()` accepts an optional pre-resolved `version_row` to avoid redundant version resolution in `list_skills()` and `resolve_skill()`.
+
+### Tests Added
+
+- `test_patch_rejects_active_assignment_when_latest_resolves_to_instruction_package`
+- `test_skills_resolve_accepts_concrete_ref_from_skills_list`
+
+### Verification After Fixes
+
+- `uv run pytest tests/test_collection_package_assignments.py -q` → 16 passed.
+- `uv run pytest -q` → 386 passed, 1 skipped.
+- `uv run ruff format agh/server/routes/collections.py tests/test_collection_package_assignments.py` → 2 files reformatted.
+- `uv run ruff check agh/server/routes/collections.py tests/test_collection_package_assignments.py` → All checks passed.

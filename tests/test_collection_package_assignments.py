@@ -482,6 +482,89 @@ def test_skills_resolve_returns_concrete_version_and_download_url(
     )
 
 
+def test_patch_rejects_active_assignment_when_latest_resolves_to_instruction_package(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client, owner = _client_with_owner(tmp_path, monkeypatch)
+    collection = _collection(client, owner)
+    _publish_package(
+        client,
+        owner,
+        "acme/tool@1.0.0",
+        _skill_only_package_files("acme", "tool", "1.0.0"),
+    )
+    assignment = _assign_package(client, owner, collection["id"], "acme/tool@latest")
+    assert assignment.status_code == status.HTTP_201_CREATED
+
+    _publish_package(
+        client,
+        owner,
+        "acme/tool@1.1.0",
+        _instruction_package_files("acme", "tool", "1.1.0"),
+    )
+
+    patch_position = client.patch(
+        f"/api/v1/collections/{collection['id']}/packages/{assignment.json()['id']}",
+        json={"position": 9},
+        headers=_auth(owner),
+    )
+    assert patch_position.status_code == status.HTTP_400_BAD_REQUEST
+    assert "instructions" in patch_position.json()["detail"].lower()
+
+    patch_active = client.patch(
+        f"/api/v1/collections/{collection['id']}/packages/{assignment.json()['id']}",
+        json={"active": True},
+        headers=_auth(owner),
+    )
+    assert patch_active.status_code == status.HTTP_400_BAD_REQUEST
+    assert "instructions" in patch_active.json()["detail"].lower()
+
+    listed = client.get(
+        f"/api/v1/collections/{collection['id']}/packages", headers=_auth(owner)
+    )
+    assert listed.status_code == status.HTTP_200_OK
+    item = listed.json()["collection_packages"][0]
+    assert item["position"] == 0
+    assert item["active"] is True
+
+    skills = client.get("/api/v1/skills", headers=_auth(owner))
+    assert skills.status_code == status.HTTP_200_OK
+    assert skills.json()["skills"] == []
+
+
+def test_skills_resolve_accepts_concrete_ref_from_skills_list(
+    tmp_path: Path, monkeypatch
+) -> None:
+    client, owner = _client_with_owner(tmp_path, monkeypatch)
+    member = _create_user(client, owner, "dev@example.com", "member")[1]
+    collection = _collection(client, owner)
+    version = _publish_package(
+        client,
+        owner,
+        "acme/tool@1.2.0",
+        _skill_only_package_files("acme", "tool", "1.2.0"),
+    )
+    _assign_package(client, owner, collection["id"], "acme/tool@latest")
+
+    listed = client.get("/api/v1/skills", headers=_auth(member))
+    assert listed.status_code == status.HTTP_200_OK
+    concrete_ref = listed.json()["skills"][0]["resolved_ref"]
+    assert concrete_ref == "acme/tool@1.2.0"
+
+    response = client.get(
+        f"/api/v1/skills:resolve?package_ref={concrete_ref}&skill_name=comment-writer",
+        headers=_auth(member),
+    )
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["package_version_id"].startswith("pkgv_")
+    assert body["package_ref"] == version["id"]
+    assert body["checksum"] == version["checksum"]
+    assert body["download_url"].endswith(
+        "/api/v1/packages/acme/tool/versions/1.2.0/files/skills/comment-writer/SKILL.md"
+    )
+
+
 def test_skills_resolve_fails_closed_when_latest_becomes_instruction_bearing(
     tmp_path: Path, monkeypatch
 ) -> None:
