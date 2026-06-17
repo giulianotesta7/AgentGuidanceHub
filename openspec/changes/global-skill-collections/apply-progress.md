@@ -83,3 +83,24 @@ Review budget: target ≤400 changed lines; final diff will be reported after ve
 Review budget: maintainer-approved `size:exception` for PR 1B.1 at 716 changed lines vs `feat/global-skill-collections`; PR 1B.1 remains a focused assignment-foundation slice and is still significantly smaller than the original ~1,184-line PR 1B.
 
 Remaining: PR 1B.2 adds skill-only validation, `/skills`, `/skills:resolve`, and `@latest` fail-closed behavior from the preserved full implementation. PR 2 adds CLI/global install.
+
+## PR 1B.2 Progress
+
+Skill-only validation and skill discovery slice for issue #97. Base: PR 1B.1 / `feat/global-skill-collections-skill-api`. Scope: reject instruction-bearing collection packages, add `GET /api/v1/skills`, add `GET /api/v1/skills:resolve`, resolve concrete package versions, and fail closed when `@latest` resolves to instruction-bearing content. Excludes CLI global skills and workspace prompt wording.
+
+Completed tasks: 2.2, 2.3, 4.1B discovery coverage.
+Review budget: to be verified for PR 1B.2 against PR 1B.1 before opening the child PR.
+
+## PR 1B.2 TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 2.2 Skill-only validation | `tests/test_collection_package_assignments.py` | Integration | ✅ Assignment tests green | ✅ Instruction-bearing package tests failed before validation | ✅ Rejection tests passed after validation helper | ✅ AGENTS.md, CLAUDE.md, latest-resolving-to-instruction, and skill-only acceptance covered | ✅ Validation reused stored package artifacts |
+| 2.3 Skill list/resolve | `tests/test_collection_package_assignments.py` | Integration | ✅ Assignment tests green | ✅ List/resolve tests failed before endpoints | ✅ Discovery tests passed after `/skills` and `/skills:resolve` | ✅ Active/inactive filtering, latest resolution, fail-closed latest, collection filter, and download URL covered | ✅ Reused package artifact URL helper |
+
+## PR 1B.2 Verification
+
+- `uv run pytest tests/test_collection_package_assignments.py -q` → 14 passed.
+- Full verification pending after rebase/split cleanup.
+
+Remaining: PR 2 adds CLI global skills install/remove, agent default selection, and native path resolver.
