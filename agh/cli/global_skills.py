@@ -15,6 +15,7 @@ import urllib.error
 
 from agh.cli.agent_integrations import global_skill_dir
 from agh.cli.config import load_config
+from agh.common.checksums import managed_payload_checksum
 from agh.common.validation import is_valid_slug, parse_package_ref
 
 
@@ -40,6 +41,20 @@ _NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler)
 class InstallResult:
     target_path: Path
     changed: bool
+
+
+@dataclass(frozen=True)
+class _LocalInstallState:
+    target_content: str | None
+    cache_content: str | None
+
+    @property
+    def is_complete(self) -> bool:
+        return (
+            self.target_content is not None
+            and self.cache_content is not None
+            and self.target_content == self.cache_content
+        )
 
 
 def _agh_state_dir() -> Path:
@@ -254,8 +269,9 @@ def _install_resolved(
     _validate_path_component(skill_name, "skill name")
     package_ref_resolved = str(resolved.get("package_ref", ""))
     package_version_id = str(resolved.get("package_version_id", ""))
-    checksum = str(resolved.get("checksum", ""))
-    if not package_ref_resolved or not package_version_id or not checksum:
+    artifact_checksum = str(resolved.get("artifact_checksum", ""))
+    package_checksum = str(resolved.get("package_checksum", ""))
+    if not package_ref_resolved or not package_version_id or not artifact_checksum:
         raise GlobalSkillError("resolved skill missing required metadata")
 
     native_skill_dir = global_skill_dir(agent)
@@ -263,16 +279,34 @@ def _install_resolved(
     _reject_symlinked_path_components(
         target, boundary=native_skill_dir, action="install"
     )
+    cache = _cache_path(package_ref_resolved, skill_name)
     entries = read_lock()
     existing = _find_entry(entries, agent, skill_name)
 
     if existing is not None:
-        if existing.get("checksum") == checksum:
-            return InstallResult(target_path=target, changed=False)
-        if existing.get("package_ref_resolved") != package_ref_resolved:
+        existing_package_ref = str(existing.get("package_ref_resolved", ""))
+        if not _same_package_identity(existing_package_ref, package_ref_resolved):
             raise GlobalSkillError(
                 f"skill {skill_name} is already installed from "
                 f"{existing.get('package_ref_resolved')}; remove it first"
+            )
+        if existing.get("checksum") == artifact_checksum and not force:
+            state = _read_local_install_state(target, cache, skill_name)
+            if state.is_complete and _content_matches_checksum(
+                state.target_content, artifact_checksum
+            ):
+                return InstallResult(target_path=target, changed=False)
+            content = _repair_content_for_same_checksum(
+                state,
+                resolved,
+                target,
+                cache,
+                skill_name,
+                expected_checksum=artifact_checksum,
+            )
+        else:
+            content = _download_verified_skill(
+                resolved, skill_name, expected_checksum=artifact_checksum
             )
     elif target.exists():
         if not force:
@@ -280,16 +314,31 @@ def _install_resolved(
                 f"target {target} already exists and is not tracked by AGH; "
                 "use --force to overwrite"
             )
+        content = _download_verified_skill(
+            resolved, skill_name, expected_checksum=artifact_checksum
+        )
+    else:
+        content = _download_verified_skill(
+            resolved, skill_name, expected_checksum=artifact_checksum
+        )
 
-    content = download_skill(resolved)
-    cache = _cache_path(package_ref_resolved, skill_name)
     previous_target_content = None
-    if existing is not None and target.exists() and not target.is_symlink():
-        previous_target_content = target.read_text(encoding="utf-8")
+    if existing is not None:
+        previous_target_content = _read_optional_text_file(
+            target,
+            label="existing target",
+            recovery=(
+                f"Inspect {target}, restore it manually if needed, then reinstall "
+                "with --force."
+            ),
+        )
     previous_cache_content = None
-    if existing is not None and cache.exists() and not cache.is_symlink():
-        _reject_symlinked_existing_prefixes(cache, action="read cache")
-        previous_cache_content = cache.read_text(encoding="utf-8")
+    if existing is not None:
+        previous_cache_content = _read_optional_text_file(
+            cache,
+            label="existing cache",
+            recovery=f"Inspect or delete {cache}, then reinstall with --force.",
+        )
     try:
         _write_skill_file(target, content)
         _write_cache_file(package_ref_resolved, skill_name, content)
@@ -300,10 +349,12 @@ def _install_resolved(
             "package_ref_requested": package_ref_requested,
             "package_ref_resolved": package_ref_resolved,
             "package_version_id": package_version_id,
-            "checksum": checksum,
+            "checksum": artifact_checksum,
             "target_path": str(target),
             "installed_at": _now_iso(),
         }
+        if package_checksum:
+            new_entry["package_checksum"] = package_checksum
         if existing is not None:
             existing.update(new_entry)
         else:
@@ -316,8 +367,108 @@ def _install_resolved(
             _restore_previous_install(
                 target, cache, previous_target_content, previous_cache_content, exc
             )
-        raise
+        if isinstance(exc, GlobalSkillError):
+            raise
+        operation = "install" if existing is None else "update"
+        raise GlobalSkillError(
+            f"global skill {operation} failed for {skill_name}: {exc}. "
+            f"rolled back partial writes for {target} and {cache}; retry after "
+            "fixing local filesystem state."
+        ) from exc
     return InstallResult(target_path=target, changed=True)
+
+
+def _read_local_install_state(
+    target: Path, cache: Path, skill_name: str
+) -> _LocalInstallState:
+    return _LocalInstallState(
+        target_content=_read_optional_text_file(
+            target,
+            label="AGH-managed target",
+            recovery=(
+                f"Remove unsafe local state for {skill_name}, or reinstall with --force "
+                "after verifying the path is safe."
+            ),
+        ),
+        cache_content=_read_optional_text_file(
+            cache,
+            label="AGH-managed cache",
+            recovery=f"Delete {cache}, or reinstall with --force after verifying the path is safe.",
+        ),
+    )
+
+
+def _repair_content_for_same_checksum(
+    state: _LocalInstallState,
+    resolved: dict[str, Any],
+    target: Path,
+    cache: Path,
+    skill_name: str,
+    *,
+    expected_checksum: str,
+) -> str:
+    if state.target_content is not None and _content_matches_checksum(
+        state.target_content, expected_checksum
+    ):
+        return state.target_content
+    if state.cache_content is not None and _content_matches_checksum(
+        state.cache_content, expected_checksum
+    ):
+        return state.cache_content
+    try:
+        content = _download_verified_skill(
+            resolved, skill_name, expected_checksum=expected_checksum
+        )
+    except GlobalSkillError as exc:
+        raise GlobalSkillError(
+            f"lock checksum for {skill_name} is current, but target {target} and "
+            f"cache {cache} are missing or unusable and repair download failed: {exc}. "
+            "Remove the stale lock entry or retry with --force after restoring network access."
+        ) from exc
+    return content
+
+
+def _download_verified_skill(
+    resolved: dict[str, Any], skill_name: str, *, expected_checksum: str
+) -> str:
+    content = download_skill(resolved)
+    actual_checksum = managed_payload_checksum(content)
+    if actual_checksum != expected_checksum:
+        raise GlobalSkillError(
+            f"downloaded skill {skill_name} checksum mismatch: expected "
+            f"{expected_checksum}, got {actual_checksum}. The artifact was not "
+            "written; retry later or contact the collection maintainer."
+        )
+    return content
+
+
+def _content_matches_checksum(content: str | None, expected_checksum: str) -> bool:
+    return (
+        content is not None and managed_payload_checksum(content) == expected_checksum
+    )
+
+
+def _same_package_identity(left: str, right: str) -> bool:
+    try:
+        left_ref = parse_package_ref(left, allow_latest=False)
+        right_ref = parse_package_ref(right, allow_latest=False)
+    except ValueError:
+        return False
+    return left_ref.domain == right_ref.domain and left_ref.name == right_ref.name
+
+
+def _read_optional_text_file(path: Path, *, label: str, recovery: str) -> str | None:
+    _reject_symlinked_existing_prefixes(path, action=f"read {label}")
+    if not path.exists():
+        return None
+    if not path.is_file():
+        raise GlobalSkillError(f"non-file {label} path: {path}. {recovery}")
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise GlobalSkillError(
+            f"failed to read {label} {path}: {exc}. {recovery}"
+        ) from exc
 
 
 def _cleanup_partial_install(target: Path, cache: Path) -> None:
@@ -367,6 +518,10 @@ def _write_skill_file(target: Path, content: str) -> None:
     parent.mkdir(parents=True, exist_ok=True)
     if target.is_symlink():
         raise GlobalSkillError(f"refusing to write through symlinked file: {target}")
+    if target.exists() and not target.is_file():
+        raise GlobalSkillError(
+            f"non-file skill target path: {target}. Remove it manually, then reinstall."
+        )
     _atomic_write_text(target, content)
 
 
@@ -377,6 +532,10 @@ def _write_cache_file(package_ref: str, skill_name: str, content: str) -> None:
     if parent.exists() and parent.is_file():
         raise GlobalSkillError(f"non-directory cache parent path: {parent}")
     parent.mkdir(parents=True, exist_ok=True)
+    if cache.exists() and not cache.is_file():
+        raise GlobalSkillError(
+            f"non-file cache path: {cache}. Remove it manually, then reinstall."
+        )
     _atomic_write_text(cache, content)
 
 

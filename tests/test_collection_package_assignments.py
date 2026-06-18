@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import status
 from fastapi.testclient import TestClient
 
+from agh.common.checksums import managed_payload_checksum
 from agh.common.ids import generate_prefixed_id, is_valid_prefixed_id
 from agh.server.app import create_app
 from agh.server.db import connect_database, get_database_path, run_migrations
@@ -66,6 +67,11 @@ def _skill_only_package_files(domain: str, name: str, version: str) -> dict[str,
         "skills/comment-writer/SKILL.md": f"# {domain}/{name} {version}\n",
         "skills/reviewer/SKILL.md": f"# {domain}/{name} reviewer {version}\n",
     }
+
+
+def _skill_artifact_checksum(domain: str, name: str, version: str, skill: str) -> str:
+    files = _skill_only_package_files(domain, name, version)
+    return managed_payload_checksum(files[f"skills/{skill}/SKILL.md"])
 
 
 def _instruction_package_files(domain: str, name: str, version: str) -> dict[str, str]:
@@ -424,8 +430,18 @@ def test_skills_list_returns_resolved_refs_and_checksums(
     assert len(latest_rows) == 2
     assert concrete_rows[0]["resolved_ref"] == "acme/tool-concrete@1.0.0"
     assert latest_rows[0]["resolved_ref"] == "acme/tool-latest@1.2.0"
-    assert concrete_rows[0]["checksum"] == version_100["checksum"]
-    assert latest_rows[0]["checksum"] == version_120["checksum"]
+    concrete_checksum = _skill_artifact_checksum(
+        "acme", "tool-concrete", "1.0.0", concrete_rows[0]["skill_name"]
+    )
+    latest_checksum = _skill_artifact_checksum(
+        "acme", "tool-latest", "1.2.0", latest_rows[0]["skill_name"]
+    )
+    assert concrete_rows[0]["checksum"] == concrete_checksum
+    assert concrete_rows[0]["artifact_checksum"] == concrete_checksum
+    assert concrete_rows[0]["package_checksum"] == version_100["checksum"]
+    assert latest_rows[0]["checksum"] == latest_checksum
+    assert latest_rows[0]["artifact_checksum"] == latest_checksum
+    assert latest_rows[0]["package_checksum"] == version_120["checksum"]
     assert concrete_rows[0]["description"] == "acme/tool-concrete 1.0.0"
 
 
@@ -589,7 +605,12 @@ def test_skills_resolve_returns_concrete_version_and_download_url(
     body = response.json()
     assert body["package_version_id"].startswith("pkgv_")
     assert body["package_ref"] == version["id"]
-    assert body["checksum"] == version["checksum"]
+    artifact_checksum = _skill_artifact_checksum(
+        "acme", "tool", "1.2.0", "comment-writer"
+    )
+    assert body["checksum"] == artifact_checksum
+    assert body["artifact_checksum"] == artifact_checksum
+    assert body["package_checksum"] == version["checksum"]
     assert body["artifact_path"] == "skills/comment-writer/SKILL.md"
     assert body["download_url"].endswith(
         "/api/v1/packages/acme/tool/versions/1.2.0/files/skills/comment-writer/SKILL.md"
@@ -673,7 +694,12 @@ def test_skills_resolve_accepts_concrete_ref_from_skills_list(
     body = response.json()
     assert body["package_version_id"].startswith("pkgv_")
     assert body["package_ref"] == version["id"]
-    assert body["checksum"] == version["checksum"]
+    artifact_checksum = _skill_artifact_checksum(
+        "acme", "tool", "1.2.0", "comment-writer"
+    )
+    assert body["checksum"] == artifact_checksum
+    assert body["artifact_checksum"] == artifact_checksum
+    assert body["package_checksum"] == version["checksum"]
     assert body["download_url"].endswith(
         "/api/v1/packages/acme/tool/versions/1.2.0/files/skills/comment-writer/SKILL.md"
     )

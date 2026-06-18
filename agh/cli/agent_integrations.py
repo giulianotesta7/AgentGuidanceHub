@@ -62,6 +62,16 @@ def global_skill_defaults_path() -> Path:
     return state / "global-skills" / "defaults.toml"
 
 
+def _reject_symlinked_existing_prefixes(path: Path, *, action: str) -> None:
+    candidate = Path(path.anchor) if path.anchor else Path()
+    for part in path.parts[1 if path.anchor else 0 :]:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise AgentPreferenceError(
+                f"refusing to {action} through symlinked path component: {candidate}"
+            )
+
+
 def agent_preferences_path(workspace: Path | None = None) -> Path:
     """Return the local workspace preferences TOML path."""
     root = Path.cwd() if workspace is None else workspace
@@ -230,8 +240,7 @@ def global_skill_dir(agent: str) -> Path:
 def read_global_skill_default_agent() -> str | None:
     """Read the saved default agent for global skills, if any."""
     path = global_skill_defaults_path()
-    if path.is_symlink() or path.parent.is_symlink():
-        raise AgentPreferenceError("refusing to read symlinked AGH defaults")
+    _reject_symlinked_existing_prefixes(path, action="read AGH defaults")
     if path.parent.exists() and not path.parent.is_dir():
         raise AgentPreferenceError(f"non-directory AGH state path: {path.parent}")
     if not path.exists():
@@ -265,10 +274,7 @@ def write_global_skill_default_agent(agent: str) -> None:
         )
     path = global_skill_defaults_path()
     state_dir = path.parent
-    if state_dir.is_symlink():
-        raise AgentPreferenceError(
-            f"refusing to write through symlinked AGH state directory: {state_dir}"
-        )
+    _reject_symlinked_existing_prefixes(path, action="write AGH defaults")
     if state_dir.exists() and not state_dir.is_dir():
         raise AgentPreferenceError(f"non-directory AGH state path: {state_dir}")
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -295,8 +301,7 @@ def write_global_skill_default_agent(agent: str) -> None:
 def clear_global_skill_default_agent() -> bool:
     """Remove the global skill default file if it exists."""
     path = global_skill_defaults_path()
-    if path.is_symlink() or path.parent.is_symlink():
-        raise AgentPreferenceError("refusing to remove symlinked AGH defaults")
+    _reject_symlinked_existing_prefixes(path, action="remove AGH defaults")
     if path.parent.exists() and not path.parent.is_dir():
         raise AgentPreferenceError(f"non-directory AGH state path: {path.parent}")
     if not path.exists():

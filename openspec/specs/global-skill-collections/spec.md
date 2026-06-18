@@ -59,7 +59,7 @@ The `agh skill install <package-ref> <skill-name>` command MUST install collecti
 
 - GIVEN an available collection package ref such as `@latest`
 - WHEN a member installs a skill
-- THEN the system records the resolved version and checksum in local AGH state
+- THEN the system records the resolved version and verified `SKILL.md` artifact checksum in local AGH state
 
 #### Scenario: Remove clears the local installation record
 
@@ -67,9 +67,10 @@ The `agh skill install <package-ref> <skill-name>` command MUST install collecti
 - WHEN the user removes it
 - THEN the local installation is removed and the local lock is updated
 
-### Requirement: Global skill target and conflict rules
+### Requirement: Global skill target, checksum, and conflict rules
 
 The system MUST install to the selected agent’s native global skill directory, maintain AGH-owned cache and lock state under user AGH state, and enforce update rules: same checksum is a no-op, AGH-owned version or checksum changes update automatically, same skill name from a different package conflicts, and untracked targets require `--force`.
+Skill listing and resolution MUST expose a checksum for the downloaded `SKILL.md` artifact content. The CLI MUST verify downloaded artifact content against that checksum before writing the target, cache, or lock; `--force` MUST NOT bypass checksum verification. Package-level checksums MAY be exposed separately for compatibility, but local global-skill locks MUST use the artifact checksum for install integrity.
 
 #### Scenario: AGH-owned install updates cleanly
 

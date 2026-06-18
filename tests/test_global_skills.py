@@ -12,6 +12,7 @@ from typer.testing import CliRunner
 
 from agh.cli import global_skills as gs
 from agh.cli.main import app as cli_app
+from agh.common.checksums import managed_payload_checksum
 from agh.cli.agent_integrations import (
     AgentPreferenceError,
     clear_global_skill_default_agent,
@@ -43,13 +44,17 @@ def _resolved(
     *,
     package_version_id: str = "pkgv_123",
     package_ref: str = "acme/commenting@1.2.0",
-    checksum: str = "sha256:abc",
+    checksum: str | None = None,
+    package_checksum: str = "sha256:package",
     artifact_path: str = "skills/reviewer/SKILL.md",
 ) -> dict[str, Any]:
+    artifact_checksum = checksum or managed_payload_checksum("# Skill content\n")
     return {
         "package_version_id": package_version_id,
         "package_ref": package_ref,
-        "checksum": checksum,
+        "checksum": artifact_checksum,
+        "artifact_checksum": artifact_checksum,
+        "package_checksum": package_checksum,
         "artifact_path": artifact_path,
         "download_url": f"/api/v1/packages/acme/commenting/versions/1.2.0/files/{artifact_path}",
     }
@@ -68,6 +73,17 @@ def _cache_file(agh_state: Path) -> Path:
     )
 
 
+def _cache_file_for(agh_state: Path, version: str) -> Path:
+    return (
+        agh_state
+        / f"agh/global-skills/cache/acme/commenting/{version}/skills/reviewer/SKILL.md"
+    )
+
+
+def _checksum(content: str) -> str:
+    return managed_payload_checksum(content)
+
+
 def _mock_skill_install(
     monkeypatch: MonkeyPatch, content: str = "# Skill content\n"
 ) -> None:
@@ -76,7 +92,11 @@ def _mock_skill_install(
         "load_config",
         lambda: AghConfig("http://localhost:8912", "member@example.com", "t"),
     )
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
     monkeypatch.setattr(gs, "download_skill", lambda _r: content)
 
 
@@ -193,8 +213,11 @@ def test_install_writes_target_lock_and_cache(
         ),
     )
 
+    expected_checksum = _checksum("# Skill content\n")
     monkeypatch.setattr(
-        gs, "resolve_skill", lambda _api, _ref, _name: _resolved(checksum="sha256:abc")
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=expected_checksum),
     )
     monkeypatch.setattr(gs, "download_skill", lambda _r: "# Skill content\n")
 
@@ -213,13 +236,14 @@ def test_install_writes_target_lock_and_cache(
     assert entry["package_ref_requested"] == "acme/commenting@latest"
     assert entry["package_ref_resolved"] == "acme/commenting@1.2.0"
     assert entry["package_version_id"] == "pkgv_123"
-    assert entry["checksum"] == "sha256:abc"
+    assert entry["checksum"] == expected_checksum
     assert entry["target_path"] == str(target)
 
 
 def test_same_checksum_is_noop(
     agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
 ) -> None:
+    content = "# Skill content\n"
     monkeypatch.setattr(
         gs,
         "load_config",
@@ -229,9 +253,11 @@ def test_same_checksum_is_noop(
     )
 
     monkeypatch.setattr(
-        gs, "resolve_skill", lambda _api, _ref, _name: _resolved(checksum="sha256:abc")
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
     )
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# Skill content\n")
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
 
     gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
     result = gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
@@ -239,6 +265,121 @@ def test_same_checksum_is_noop(
     assert result.changed is False
     lock = gs.read_lock()
     assert len(lock) == 1
+
+
+def test_same_checksum_redownloads_when_target_and_cache_are_corrupted(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    content = "# Skill content\n"
+    _mock_skill_install(monkeypatch, content)
+    gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    cache = _cache_file(agh_state)
+    target.write_text("# Corrupted\n", encoding="utf-8")
+    cache.write_text("# Corrupted\n", encoding="utf-8")
+    downloads = 0
+
+    def download_canonical(_resolved: dict[str, Any]) -> str:
+        nonlocal downloads
+        downloads += 1
+        return content
+
+    monkeypatch.setattr(gs, "download_skill", download_canonical)
+
+    result = gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    assert result.changed is True
+    assert downloads == 1
+    assert target.read_text(encoding="utf-8") == content
+    assert cache.read_text(encoding="utf-8") == content
+
+
+@pytest.mark.parametrize("missing_side", ["target", "cache"])
+def test_same_checksum_redownloads_when_one_side_missing_and_other_corrupted(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch, missing_side: str
+) -> None:
+    content = "# Skill content\n"
+    _mock_skill_install(monkeypatch, content)
+    gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    cache = _cache_file(agh_state)
+    if missing_side == "target":
+        target.unlink()
+        cache.write_text("# Corrupted\n", encoding="utf-8")
+    else:
+        cache.unlink()
+        target.write_text("# Corrupted\n", encoding="utf-8")
+    downloads = 0
+
+    def download_canonical(_resolved: dict[str, Any]) -> str:
+        nonlocal downloads
+        downloads += 1
+        return content
+
+    monkeypatch.setattr(gs, "download_skill", download_canonical)
+
+    result = gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    assert result.changed is True
+    assert downloads == 1
+    assert target.read_text(encoding="utf-8") == content
+    assert cache.read_text(encoding="utf-8") == content
+
+
+def test_same_checksum_repairs_missing_target(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _mock_skill_install(monkeypatch, "# Skill content\n")
+    gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    target.unlink()
+
+    result = gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    assert result.changed is True
+    assert target.read_text(encoding="utf-8") == "# Skill content\n"
+    assert _cache_file(agh_state).read_text(encoding="utf-8") == "# Skill content\n"
+    assert len(gs.read_lock()) == 1
+
+
+def test_same_checksum_repairs_missing_cache(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _mock_skill_install(monkeypatch, "# Skill content\n")
+    gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    cache = _cache_file(agh_state)
+    cache.unlink()
+
+    result = gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    assert result.changed is True
+    assert target.read_text(encoding="utf-8") == "# Skill content\n"
+    assert cache.read_text(encoding="utf-8") == "# Skill content\n"
+    assert len(gs.read_lock()) == 1
+
+
+def test_same_checksum_force_reinstalls_missing_target(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _mock_skill_install(monkeypatch, "# Skill content\n")
+    gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    target.unlink()
+    monkeypatch.setattr(gs, "download_skill", lambda _r: "# Skill content\n")
+
+    result = gs.install_skill_global(
+        "opencode", "acme/commenting@latest", "reviewer", force=True
+    )
+
+    assert result.changed is True
+    assert target.read_text(encoding="utf-8") == "# Skill content\n"
+    assert _cache_file(agh_state).read_text(encoding="utf-8") == "# Skill content\n"
 
 
 def test_agh_owned_update_works(
@@ -252,18 +393,31 @@ def test_agh_owned_update_works(
         ),
     )
 
-    checksums = ["sha256:abc", "sha256:def"]
     contents = ["# v1\n", "# v2\n"]
+    resolved_versions = [
+        _resolved(
+            package_version_id="pkgv_123",
+            package_ref="acme/commenting@1.2.0",
+            checksum=_checksum(contents[0]),
+        ),
+        _resolved(
+            package_version_id="pkgv_456",
+            package_ref="acme/commenting@1.3.0",
+            checksum=_checksum(contents[1]),
+        ),
+    ]
     call_count = 0
 
     def fake_resolve(_api: Any, _ref: str, _name: str) -> dict[str, Any]:
         nonlocal call_count
-        resolved = _resolved(checksum=checksums[call_count])
+        resolved = resolved_versions[call_count]
         call_count += 1
         return resolved
 
     def fake_download(resolved: dict[str, Any]) -> str:
-        return contents[checksums.index(resolved["checksum"])]
+        if resolved["package_version_id"] == "pkgv_123":
+            return contents[0]
+        return contents[1]
 
     monkeypatch.setattr(gs, "resolve_skill", fake_resolve)
     monkeypatch.setattr(gs, "download_skill", fake_download)
@@ -274,9 +428,12 @@ def test_agh_owned_update_works(
     assert updated.changed is True
     target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
     assert target.read_text(encoding="utf-8") == "# v2\n"
+    assert _cache_file_for(agh_state, "1.3.0").read_text(encoding="utf-8") == "# v2\n"
     lock = gs.read_lock()
     assert len(lock) == 1
-    assert lock[0]["checksum"] == "sha256:def"
+    assert lock[0]["package_ref_resolved"] == "acme/commenting@1.3.0"
+    assert lock[0]["package_version_id"] == "pkgv_456"
+    assert lock[0]["checksum"] == _checksum("# v2\n")
 
 
 def test_untracked_target_without_force_raises(
@@ -399,8 +556,13 @@ def test_list_installed_skills_filters_by_agent(
         ),
     )
 
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    content = "# content\n"
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
     gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
     gs.install_skill_global("claude", "acme/commenting@latest", "reviewer")
 
@@ -457,6 +619,93 @@ def test_untracked_target_with_force_overwrites(
     assert target.read_text(encoding="utf-8") == "# Skill content\n"
 
 
+def test_install_rejects_download_checksum_mismatch_before_writing(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    expected_content = "# Expected\n"
+    monkeypatch.setattr(
+        gs,
+        "load_config",
+        lambda: AghConfig(
+            instance_url="http://localhost:8912", email="member@example.com", token="t"
+        ),
+    )
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(expected_content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: "# Tampered\n")
+
+    with pytest.raises(gs.GlobalSkillError, match="checksum mismatch"):
+        gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    assert not target.exists()
+    assert not _cache_file(agh_state).exists()
+    assert gs.read_lock() == []
+
+
+def test_force_install_rejects_download_checksum_mismatch_without_overwriting(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    expected_content = "# Expected\n"
+    monkeypatch.setattr(
+        gs,
+        "load_config",
+        lambda: AghConfig(
+            instance_url="http://localhost:8912", email="member@example.com", token="t"
+        ),
+    )
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("# Untracked\n", encoding="utf-8")
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(expected_content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: "# Tampered\n")
+
+    with pytest.raises(gs.GlobalSkillError, match="checksum mismatch"):
+        gs.install_skill_global(
+            "opencode", "acme/commenting@latest", "reviewer", force=True
+        )
+
+    assert target.read_text(encoding="utf-8") == "# Untracked\n"
+    assert not _cache_file(agh_state).exists()
+    assert gs.read_lock() == []
+
+
+def test_update_rejects_download_checksum_mismatch_without_promoting(
+    agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
+) -> None:
+    _mock_skill_install(monkeypatch, "# v1\n")
+    gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(
+            package_version_id="pkgv_456",
+            package_ref="acme/commenting@1.3.0",
+            checksum=_checksum("# v2\n"),
+        ),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: "# Tampered\n")
+
+    with pytest.raises(gs.GlobalSkillError, match="checksum mismatch"):
+        gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
+
+    target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
+    assert target.read_text(encoding="utf-8") == "# v1\n"
+    assert _cache_file(agh_state).read_text(encoding="utf-8") == "# v1\n"
+    assert not _cache_file_for(agh_state, "1.3.0").exists()
+    lock = gs.read_lock()
+    assert len(lock) == 1
+    assert lock[0]["checksum"] == _checksum("# v1\n")
+
+
 def test_different_package_same_skill_conflicts(
     agh_state: Path, agent_home: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -468,14 +717,16 @@ def test_different_package_same_skill_conflicts(
         ),
     )
 
+    content = "# content\n"
     monkeypatch.setattr(
         gs,
         "resolve_skill",
         lambda _api, ref, _name: _resolved(
-            package_ref=ref.replace("@latest", "@1.0.0")
+            package_ref=ref.replace("@latest", "@1.0.0"),
+            checksum=_checksum(content),
         ),
     )
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
     gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
 
     monkeypatch.setattr(
@@ -484,7 +735,7 @@ def test_different_package_same_skill_conflicts(
         lambda _api, ref, _name: _resolved(
             package_ref="acme/other@2.0.0",
             package_version_id="pkgv_999",
-            checksum="sha256:xyz",
+            checksum=_checksum("# other\n"),
         ),
     )
 
@@ -498,7 +749,7 @@ def test_remove_missing_skill_raises(agh_state: Path) -> None:
 
 
 def test_global_skill_dir_rejects_invalid_agent() -> None:
-    with pytest.raises(Exception):
+    with pytest.raises(AgentPreferenceError, match="agent target"):
         global_skill_dir("both")
 
 
@@ -540,8 +791,13 @@ def test_install_rejects_symlinked_target_parent(
             instance_url="http://localhost:8912", email="member@example.com", token="t"
         ),
     )
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    content = "# content\n"
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
 
     skills_dir = agent_home / ".config" / "opencode" / "skills"
     skills_dir.mkdir(parents=True, exist_ok=True)
@@ -563,8 +819,13 @@ def test_install_rejects_symlinked_target(
             instance_url="http://localhost:8912", email="member@example.com", token="t"
         ),
     )
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    content = "# content\n"
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
 
     target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -603,8 +864,13 @@ def test_install_rejects_symlinked_cache_parent(
             instance_url="http://localhost:8912", email="member@example.com", token="t"
         ),
     )
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    content = "# content\n"
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
 
     cache_parent = (
         agh_state
@@ -652,8 +918,13 @@ def test_remove_rejects_symlinked_target(
             instance_url="http://localhost:8912", email="member@example.com", token="t"
         ),
     )
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    content = "# content\n"
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
     gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
 
     target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
@@ -695,8 +966,13 @@ def test_install_rolls_back_partial_writes_on_lock_failure(
             instance_url="http://localhost:8912", email="member@example.com", token="t"
         ),
     )
-    monkeypatch.setattr(gs, "resolve_skill", lambda _api, _ref, _name: _resolved())
-    monkeypatch.setattr(gs, "download_skill", lambda _r: "# content\n")
+    content = "# content\n"
+    monkeypatch.setattr(
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum(content)),
+    )
+    monkeypatch.setattr(gs, "download_skill", lambda _r: content)
 
     calls = 0
 
@@ -707,7 +983,7 @@ def test_install_rolls_back_partial_writes_on_lock_failure(
 
     monkeypatch.setattr(gs, "_write_lock", failing_write_lock)
 
-    with pytest.raises(OSError, match="disk full"):
+    with pytest.raises(gs.GlobalSkillError, match="disk full.*rolled back"):
         gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
 
     target = agent_home / ".config" / "opencode" / "skills" / "reviewer" / "SKILL.md"
@@ -726,7 +1002,9 @@ def test_update_restores_existing_skill_when_lock_write_fails(
     cache = _cache_file(agh_state)
 
     monkeypatch.setattr(
-        gs, "resolve_skill", lambda _api, _ref, _name: _resolved(checksum="sha256:def")
+        gs,
+        "resolve_skill",
+        lambda _api, _ref, _name: _resolved(checksum=_checksum("# v2\n")),
     )
     monkeypatch.setattr(gs, "download_skill", lambda _r: "# v2\n")
 
@@ -735,14 +1013,14 @@ def test_update_restores_existing_skill_when_lock_write_fails(
 
     monkeypatch.setattr(gs, "_write_lock", failing_write_lock)
 
-    with pytest.raises(OSError, match="disk full"):
+    with pytest.raises(gs.GlobalSkillError, match="disk full.*rolled back"):
         gs.install_skill_global("opencode", "acme/commenting@latest", "reviewer")
 
     assert target.read_text(encoding="utf-8") == "# v1\n"
     assert cache.read_text(encoding="utf-8") == "# v1\n"
     lock = gs.read_lock()
     assert len(lock) == 1
-    assert lock[0]["checksum"] == "sha256:abc"
+    assert lock[0]["checksum"] == _checksum("# v1\n")
 
     original_atomic_write = gs._atomic_write_text
 
@@ -900,6 +1178,47 @@ def test_write_global_skill_default_rejects_symlinked_parent(agh_state: Path) ->
         write_global_skill_default_agent("opencode")
 
 
+def test_read_global_skill_default_rejects_symlinked_agh_ancestor(
+    agh_state: Path,
+) -> None:
+    outside_state = agh_state / "outside-state"
+    outside_state.mkdir(parents=True)
+    (agh_state / "agh").symlink_to(outside_state, target_is_directory=True)
+
+    with pytest.raises(AgentPreferenceError, match="symlinked path component"):
+        read_global_skill_default_agent()
+
+
+def test_clear_global_skill_default_rejects_symlinked_agh_ancestor(
+    agh_state: Path,
+) -> None:
+    outside_state = agh_state / "outside-state"
+    outside_defaults = outside_state / "global-skills" / "defaults.toml"
+    outside_defaults.parent.mkdir(parents=True)
+    outside_defaults.write_text(
+        '[skills]\ndefault_agent = "claude"\n', encoding="utf-8"
+    )
+    (agh_state / "agh").symlink_to(outside_state, target_is_directory=True)
+
+    with pytest.raises(AgentPreferenceError, match="symlinked path component"):
+        clear_global_skill_default_agent()
+
+    assert outside_defaults.exists()
+
+
+def test_write_global_skill_default_rejects_symlinked_agh_ancestor(
+    agh_state: Path,
+) -> None:
+    outside_state = agh_state / "outside-state"
+    outside_state.mkdir(parents=True)
+    (agh_state / "agh").symlink_to(outside_state, target_is_directory=True)
+
+    with pytest.raises(AgentPreferenceError, match="symlinked path component"):
+        write_global_skill_default_agent("opencode")
+
+    assert not (outside_state / "global-skills" / "defaults.toml").exists()
+
+
 def test_skill_list_shows_available_skills(monkeypatch: MonkeyPatch) -> None:
     from agh.cli import main as cli_main
 
@@ -1029,6 +1348,7 @@ def test_skill_remove_uses_default_agent(
 def test_skill_installed_lists_lock_entries(monkeypatch: MonkeyPatch) -> None:
     from agh.cli import main as cli_main
 
+    checksum = _checksum("# Skill content\n")
     monkeypatch.setattr(
         cli_main.global_skills_module,
         "list_installed_skills",
@@ -1036,7 +1356,7 @@ def test_skill_installed_lists_lock_entries(monkeypatch: MonkeyPatch) -> None:
             {
                 "name": "reviewer",
                 "package_ref_resolved": "acme/commenting@1.2.0",
-                "checksum": "sha256:abc",
+                "checksum": checksum,
             }
         ],
     )
@@ -1046,7 +1366,7 @@ def test_skill_installed_lists_lock_entries(monkeypatch: MonkeyPatch) -> None:
     assert result.exit_code == 0, result.stdout
     assert "reviewer" in result.stdout
     assert "acme/commenting@1.2.0" in result.stdout
-    assert "sha256:abc" in result.stdout
+    assert checksum in result.stdout
 
 
 def test_skill_agent_show_select_and_clear_roundtrip(agh_state: Path) -> None:

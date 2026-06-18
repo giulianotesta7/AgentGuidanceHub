@@ -12,6 +12,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
+from agh.common.checksums import managed_payload_checksum
 from agh.common.ids import generate_prefixed_id, is_valid_prefixed_id
 from agh.common.validation import PackageRef, parse_package_ref
 from agh.server.auth import CurrentUser, get_current_user
@@ -255,6 +256,11 @@ def _assignment_row(
 def _download_url(domain: str, name: str, version: str, path: str) -> str:
     quoted_path = quote(path, safe="/")
     return f"/api/v1/packages/{domain}/{name}/versions/{version}/files/{quoted_path}"
+
+
+def _skill_artifact_checksum(storage_dir: Path, skill_name: str) -> str:
+    artifact = storage_dir / "skills" / skill_name / "SKILL.md"
+    return managed_payload_checksum(artifact.read_text(encoding="utf-8"))
 
 
 def _active_collection_package_rows(
@@ -672,6 +678,9 @@ def list_skills(
                 description = str(manifest.get("description", ""))
                 resolved_ref = f"{row['domain']}/{row['name']}@{version_row['version']}"
                 for skill_name in _skill_names(storage_dir):
+                    artifact_checksum = _skill_artifact_checksum(
+                        storage_dir, skill_name
+                    )
                     skills.append(
                         {
                             "collection_id": row["collection_id"],
@@ -679,7 +688,9 @@ def list_skills(
                             "skill_name": skill_name,
                             "package_ref": f"{row['domain']}/{row['name']}@{row['version_ref']}",
                             "resolved_ref": resolved_ref,
-                            "checksum": str(version_row["checksum"]),
+                            "checksum": artifact_checksum,
+                            "artifact_checksum": artifact_checksum,
+                            "package_checksum": str(version_row["checksum"]),
                             "description": description,
                         }
                     )
@@ -769,10 +780,15 @@ def resolve_skill(
                 status_code=status.HTTP_404_NOT_FOUND, detail="skill not found"
             )
         artifact_path = f"skills/{skill_name}/SKILL.md"
+        artifact_checksum = _skill_artifact_checksum(
+            Path(str(version_row["storage_path"])), skill_name
+        )
         return {
             "package_version_id": str(version_row["id"]),
             "package_ref": f"{matched['domain']}/{matched['name']}@{version_row['version']}",
-            "checksum": str(version_row["checksum"]),
+            "checksum": artifact_checksum,
+            "artifact_checksum": artifact_checksum,
+            "package_checksum": str(version_row["checksum"]),
             "artifact_path": artifact_path,
             "download_url": _download_url(
                 str(matched["domain"]),
