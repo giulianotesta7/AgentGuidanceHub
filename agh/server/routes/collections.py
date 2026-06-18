@@ -709,6 +709,17 @@ def list_skills(
                     exc,
                 )
                 continue
+            except (ValueError, KeyError) as exc:
+                LOGGER.warning(
+                    "Suppressed active collection assignment: collection_id=%s "
+                    "assignment_id=%s package_id=%s version_ref=%s error=%s",
+                    row["collection_id"],
+                    row["id"],
+                    row["package_id"],
+                    row["version_ref"],
+                    exc,
+                )
+                continue
         return {"skills": skills}
     finally:
         conn.close()

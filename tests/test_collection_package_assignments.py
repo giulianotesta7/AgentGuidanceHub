@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from agh.common.ids import generate_prefixed_id, is_valid_prefixed_id
 from agh.server.app import create_app
-from agh.server.db import connect_database, run_migrations
+from agh.server.db import connect_database, get_database_path, run_migrations
 
 
 def _client_with_owner(tmp_path: Path, monkeypatch) -> tuple[TestClient, str]:
@@ -522,6 +522,49 @@ def test_skills_list_suppresses_toctou_oserror_during_iteration(
     assert "Suppressed active collection assignment" in log_message
     assert collection["id"] in log_args
     assert "simulated TOCTOU read failure" in str(log_args)
+
+
+def test_skills_list_suppresses_corrupt_manifest_json(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from unittest.mock import patch
+
+    client, owner = _client_with_owner(tmp_path, monkeypatch)
+    collection = _collection(client, owner)
+    _publish_package(
+        client,
+        owner,
+        "acme/tool@1.0.0",
+        _skill_only_package_files("acme", "tool", "1.0.0"),
+    )
+    _assign_package(client, owner, collection["id"], "acme/tool@1.0.0")
+
+    connection = connect_database(get_database_path(tmp_path))
+    try:
+        row = connection.execute("SELECT id FROM package_versions").fetchone()
+        connection.execute(
+            "UPDATE package_versions SET manifest_json = ? WHERE id = ?",
+            ("not-valid-json", row["id"]),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    with patch("agh.server.routes.collections.LOGGER.warning") as mock_warning:
+        response = client.get("/api/v1/skills", headers=_auth(owner))
+
+    assert response.status_code == 200
+    assert response.json()["skills"] == []
+    mock_warning.assert_called_once()
+    args, _kwargs = mock_warning.call_args
+    log_message = args[0]
+    log_args = args[1:]
+    assert "Suppressed active collection assignment" in log_message
+    assert collection["id"] in log_args
+    assert (
+        "not-valid-json" in str(log_args).lower()
+        or "expecting value" in str(log_args).lower()
+    )
 
 
 def test_skills_resolve_returns_concrete_version_and_download_url(
