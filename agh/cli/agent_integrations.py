@@ -48,6 +48,30 @@ class AgentPreference:
         return AGENT_LABELS[self.target]
 
 
+def _env_path(name: str) -> Path | None:
+    value = os.environ.get(name, "").strip()
+    if value:
+        return Path(value).expanduser()
+    return None
+
+
+def global_skill_defaults_path() -> Path:
+    """Return the AGH global skill defaults file path."""
+    xdg = _env_path("XDG_STATE_HOME")
+    state = xdg / "agh" if xdg is not None else Path.home() / ".local" / "state" / "agh"
+    return state / "global-skills" / "defaults.toml"
+
+
+def _reject_symlinked_existing_prefixes(path: Path, *, action: str) -> None:
+    candidate = Path(path.anchor) if path.anchor else Path()
+    for part in path.parts[1 if path.anchor else 0 :]:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise AgentPreferenceError(
+                f"refusing to {action} through symlinked path component: {candidate}"
+            )
+
+
 def agent_preferences_path(workspace: Path | None = None) -> Path:
     """Return the local workspace preferences TOML path."""
     root = Path.cwd() if workspace is None else workspace
@@ -200,6 +224,93 @@ def symlink_points_to(path: Path, expected: Path) -> bool:
     if not target.is_absolute():
         target = path.parent / target
     return target.resolve(strict=False) == expected.resolve(strict=False)
+
+
+def global_skill_dir(agent: str) -> Path:
+    """Return the native global skill directory for the selected agent."""
+    if agent not in SUPPORTED_AGENT_TARGETS:
+        raise AgentPreferenceError(
+            "agent target must be 'claude' or 'opencode'", code=2
+        )
+    if agent == "opencode":
+        return Path.home() / ".config" / "opencode" / "skills"
+    return Path.home() / ".claude" / "skills"
+
+
+def read_global_skill_default_agent() -> str | None:
+    """Read the saved default agent for global skills, if any."""
+    path = global_skill_defaults_path()
+    _reject_symlinked_existing_prefixes(path, action="read AGH defaults")
+    if path.parent.exists() and not path.parent.is_dir():
+        raise AgentPreferenceError(f"non-directory AGH state path: {path.parent}")
+    if not path.exists():
+        return None
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        raise AgentPreferenceError(f"invalid AGH defaults: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise AgentPreferenceError(f"invalid AGH defaults encoding: {exc}") from exc
+    except OSError as exc:
+        raise AgentPreferenceError(f"failed to read AGH defaults: {exc}") from exc
+    skills = data.get("skills") if isinstance(data, dict) else None
+    if not isinstance(skills, dict):
+        return None
+    agent = skills.get("default_agent")
+    if agent is None:
+        return None
+    if not isinstance(agent, str) or agent not in SUPPORTED_AGENT_TARGETS:
+        raise AgentPreferenceError(
+            "AGH defaults default_agent must be 'claude' or 'opencode'"
+        )
+    return agent
+
+
+def write_global_skill_default_agent(agent: str) -> None:
+    """Atomically write the default agent for global skills."""
+    if agent not in SUPPORTED_AGENT_TARGETS:
+        raise AgentPreferenceError(
+            "agent target must be 'claude' or 'opencode'", code=2
+        )
+    path = global_skill_defaults_path()
+    state_dir = path.parent
+    _reject_symlinked_existing_prefixes(path, action="write AGH defaults")
+    if state_dir.exists() and not state_dir.is_dir():
+        raise AgentPreferenceError(f"non-directory AGH state path: {state_dir}")
+    state_dir.mkdir(parents=True, exist_ok=True)
+    selected_at = (
+        datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    )
+    text = f'[skills]\ndefault_agent = "{agent}"\nselected_at = "{selected_at}"\n'
+    fd, temp_name = tempfile.mkstemp(
+        prefix=".defaults.toml.", suffix=".tmp", dir=state_dir
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except Exception:
+        with suppress(FileNotFoundError):
+            temp_path.unlink()
+        raise
+
+
+def clear_global_skill_default_agent() -> bool:
+    """Remove the global skill default file if it exists."""
+    path = global_skill_defaults_path()
+    _reject_symlinked_existing_prefixes(path, action="remove AGH defaults")
+    if path.parent.exists() and not path.parent.is_dir():
+        raise AgentPreferenceError(f"non-directory AGH state path: {path.parent}")
+    if not path.exists():
+        return False
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise AgentPreferenceError(f"failed to remove AGH defaults: {exc}") from exc
+    return True
 
 
 def _detect_agent(

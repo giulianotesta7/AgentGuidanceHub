@@ -71,6 +71,7 @@ def create_app() -> FastAPI:
 
     from agh.common.package_limits import MAX_PACKAGE_PUBLISH_BODY_BYTES
     from agh.server.auth import CurrentUser, bootstrap_initial_owner, get_current_user
+    from agh.server.routes.collections import router as collections_router
     from agh.server.routes.packages import router as packages_router
     from agh.server.routes.projects import router as projects_router
     from agh.server.routes.users import router as users_router
@@ -103,6 +104,7 @@ def create_app() -> FastAPI:
     application.include_router(users_router, prefix="/api/v1")
     application.include_router(projects_router, prefix="/api/v1")
     application.include_router(packages_router, prefix="/api/v1")
+    application.include_router(collections_router, prefix="/api/v1")
 
     @application.get("/api/v1/health")
     def health() -> dict[str, str | int]:
