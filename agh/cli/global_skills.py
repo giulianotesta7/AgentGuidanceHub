@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import os
 from pathlib import Path
+import tempfile
 from typing import Any
 from urllib.parse import quote
 import urllib.request
+import urllib.error
 
 from agh.cli.agent_integrations import global_skill_dir
 from agh.cli.config import load_config
-from agh.common.validation import parse_package_ref
+from agh.common.validation import is_valid_slug, parse_package_ref
 
 
 class GlobalSkillError(RuntimeError):
@@ -67,6 +71,14 @@ def global_skill_defaults_path() -> Path:
     return _agh_state_dir() / "global-skills" / "defaults.toml"
 
 
+def _validate_path_component(value: str, label: str) -> None:
+    """Reject path traversal and invalid slugs in a filesystem path component."""
+    if not value or "/" in value or ".." in value or "\0" in value:
+        raise GlobalSkillError(f"invalid {label}: {value!r}")
+    if not is_valid_slug(value):
+        raise GlobalSkillError(f"invalid {label}: {value!r}")
+
+
 def _target_path(agent: str, skill_name: str) -> Path:
     return global_skill_dir(agent) / skill_name / "SKILL.md"
 
@@ -107,6 +119,8 @@ def read_lock() -> list[dict[str, Any]]:
 
 def _write_lock(entries: list[dict[str, Any]]) -> None:
     path = global_skill_lock_path()
+    if path.is_symlink() or path.parent.is_symlink():
+        raise GlobalSkillError(f"refusing to write lock through symlinked path: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for entry in entries:
@@ -121,11 +135,29 @@ def _write_lock(entries: list[dict[str, Any]]) -> None:
             else:
                 lines.append(f'{key} = "{_escape_toml(str(value))}"')
         lines.append("")
-    path.write_text("\n".join(lines), encoding="utf-8")
+    _atomic_write_text(path, "\n".join(lines))
 
 
 def _escape_toml(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _atomic_write_text(path: Path, content: str) -> None:
+    """Write content to path atomically via a temporary file."""
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except Exception:
+        with suppress(FileNotFoundError):
+            temp_path.unlink()
+        raise
 
 
 def _find_entry(
@@ -154,7 +186,7 @@ def resolve_skill(
     return api_request("GET", query)
 
 
-def download_skill(api_request: Any, resolved: dict[str, Any]) -> str:
+def download_skill(resolved: dict[str, Any]) -> str:
     """Download SKILL.md content for a resolved skill."""
     config = load_config()
     download_url = str(resolved.get("download_url", ""))
@@ -188,6 +220,7 @@ def install_skill_global(
     force: bool = False,
 ) -> InstallResult:
     """Install a collection skill into the selected agent's native global path."""
+    _validate_path_component(skill_name, "skill name")
     resolved = resolve_skill(_api_request, package_ref, skill_name)
     return _install_resolved(agent, package_ref, resolved, skill_name, force=force)
 
@@ -205,6 +238,7 @@ def _install_resolved(
     *,
     force: bool,
 ) -> InstallResult:
+    _validate_path_component(skill_name, "skill name")
     package_ref_resolved = str(resolved.get("package_ref", ""))
     package_version_id = str(resolved.get("package_version_id", ""))
     checksum = str(resolved.get("checksum", ""))
@@ -230,47 +264,80 @@ def _install_resolved(
                 "use --force to overwrite"
             )
 
-    content = download_skill(_api_request, resolved)
-    _write_skill_file(target, content)
-    _write_cache_file(package_ref_resolved, skill_name, content)
+    content = download_skill(resolved)
+    cache = _cache_path(package_ref_resolved, skill_name)
+    try:
+        _write_skill_file(target, content)
+        _write_cache_file(package_ref_resolved, skill_name, content)
 
-    new_entry = {
-        "name": skill_name,
-        "agent": agent,
-        "package_ref_requested": package_ref_requested,
-        "package_ref_resolved": package_ref_resolved,
-        "package_version_id": package_version_id,
-        "checksum": checksum,
-        "target_path": str(target),
-        "installed_at": _now_iso(),
-    }
-    if existing is not None:
-        existing.update(new_entry)
-    else:
-        entries.append(new_entry)
-    _write_lock(entries)
+        new_entry = {
+            "name": skill_name,
+            "agent": agent,
+            "package_ref_requested": package_ref_requested,
+            "package_ref_resolved": package_ref_resolved,
+            "package_version_id": package_version_id,
+            "checksum": checksum,
+            "target_path": str(target),
+            "installed_at": _now_iso(),
+        }
+        if existing is not None:
+            existing.update(new_entry)
+        else:
+            entries.append(new_entry)
+        _write_lock(entries)
+    except Exception:
+        _cleanup_partial_install(target, cache)
+        raise
     return InstallResult(target_path=target, changed=True)
 
 
+def _cleanup_partial_install(target: Path, cache: Path) -> None:
+    """Remove partially written target and cache files after a failed install."""
+    for path in (target, cache):
+        with suppress(FileNotFoundError, OSError):
+            path.unlink()
+
+
 def _write_skill_file(target: Path, content: str) -> None:
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content, encoding="utf-8")
+    parent = target.parent
+    if parent.is_symlink():
+        raise GlobalSkillError(
+            f"refusing to write through symlinked directory: {parent}"
+        )
+    if parent.exists() and not parent.is_dir():
+        raise GlobalSkillError(f"non-directory skill parent path: {parent}")
+    parent.mkdir(parents=True, exist_ok=True)
+    if target.is_symlink():
+        raise GlobalSkillError(f"refusing to write through symlinked file: {target}")
+    _atomic_write_text(target, content)
 
 
 def _write_cache_file(package_ref: str, skill_name: str, content: str) -> None:
     cache = _cache_path(package_ref, skill_name)
-    cache.parent.mkdir(parents=True, exist_ok=True)
-    cache.write_text(content, encoding="utf-8")
+    parent = cache.parent
+    if parent.is_symlink():
+        raise GlobalSkillError(
+            f"refusing to write through symlinked directory: {parent}"
+        )
+    if parent.exists() and parent.is_file():
+        raise GlobalSkillError(f"non-directory cache parent path: {parent}")
+    parent.mkdir(parents=True, exist_ok=True)
+    if cache.is_symlink():
+        raise GlobalSkillError(f"refusing to write through symlinked file: {cache}")
+    _atomic_write_text(cache, content)
 
 
 def remove_skill_global(agent: str, skill_name: str) -> Path:
     """Remove a globally installed skill from the agent path and lock."""
+    _validate_path_component(skill_name, "skill name")
     entries = read_lock()
     existing = _find_entry(entries, agent, skill_name)
     if existing is None:
         raise GlobalSkillError(f"skill {skill_name} is not installed for {agent}")
 
     target = Path(str(existing.get("target_path", _target_path(agent, skill_name))))
+    if target.is_symlink() or target.parent.is_symlink():
+        raise GlobalSkillError(f"refusing to remove through symlinked path: {target}")
     if target.exists():
         target.unlink()
         if target.parent.is_dir() and not any(target.parent.iterdir()):
@@ -283,4 +350,5 @@ def remove_skill_global(agent: str, skill_name: str) -> Path:
 
 def list_installed_skills(agent: str) -> list[dict[str, Any]]:
     """Return lock entries for the given agent."""
+    _validate_path_component(agent, "agent")
     return [entry for entry in read_lock() if entry.get("agent") == agent]
