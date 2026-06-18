@@ -667,6 +667,22 @@ def list_skills(
                     str(version_row["version"]),
                     version_row,
                 )
+                storage_dir = Path(str(version_row["storage_path"]))
+                manifest = json.loads(str(version_row["manifest_json"]))
+                description = str(manifest.get("description", ""))
+                resolved_ref = f"{row['domain']}/{row['name']}@{version_row['version']}"
+                for skill_name in _skill_names(storage_dir):
+                    skills.append(
+                        {
+                            "collection_id": row["collection_id"],
+                            "collection_name": row["collection_name"],
+                            "skill_name": skill_name,
+                            "package_ref": f"{row['domain']}/{row['name']}@{row['version_ref']}",
+                            "resolved_ref": resolved_ref,
+                            "checksum": str(version_row["checksum"]),
+                            "description": description,
+                        }
+                    )
             except HTTPException as exc:
                 LOGGER.warning(
                     "Suppressed active collection assignment: collection_id=%s "
@@ -693,22 +709,6 @@ def list_skills(
                     exc,
                 )
                 continue
-            storage_dir = Path(str(version_row["storage_path"]))
-            manifest = json.loads(str(version_row["manifest_json"]))
-            description = str(manifest.get("description", ""))
-            resolved_ref = f"{row['domain']}/{row['name']}@{version_row['version']}"
-            for skill_name in _skill_names(storage_dir):
-                skills.append(
-                    {
-                        "collection_id": row["collection_id"],
-                        "collection_name": row["collection_name"],
-                        "skill_name": skill_name,
-                        "package_ref": f"{row['domain']}/{row['name']}@{row['version_ref']}",
-                        "resolved_ref": resolved_ref,
-                        "checksum": str(version_row["checksum"]),
-                        "description": description,
-                    }
-                )
         return {"skills": skills}
     finally:
         conn.close()

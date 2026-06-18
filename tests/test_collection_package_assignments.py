@@ -485,6 +485,45 @@ def test_skills_list_logs_suppressed_invalid_assignment(
     assert "instructions" in str(log_args).lower()
 
 
+def test_skills_list_suppresses_toctou_oserror_during_iteration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from unittest.mock import patch
+
+    client, owner = _client_with_owner(tmp_path, monkeypatch)
+    collection = _collection(client, owner)
+    _publish_package(
+        client,
+        owner,
+        "acme/tool@1.0.0",
+        _skill_only_package_files("acme", "tool", "1.0.0"),
+    )
+    _assign_package(client, owner, collection["id"], "acme/tool@1.0.0")
+
+    with (
+        patch(
+            "agh.server.routes.collections._skill_names",
+            side_effect=[
+                ["comment-writer", "reviewer"],
+                OSError("simulated TOCTOU read failure"),
+            ],
+        ) as mock_skill_names,
+        patch("agh.server.routes.collections.LOGGER.warning") as mock_warning,
+    ):
+        response = client.get("/api/v1/skills", headers=_auth(owner))
+
+    assert response.status_code == 200
+    assert response.json()["skills"] == []
+    mock_skill_names.assert_called()
+    mock_warning.assert_called_once()
+    args, _kwargs = mock_warning.call_args
+    log_message = args[0]
+    log_args = args[1:]
+    assert "Suppressed active collection assignment" in log_message
+    assert collection["id"] in log_args
+    assert "simulated TOCTOU read failure" in str(log_args)
+
+
 def test_skills_resolve_returns_concrete_version_and_download_url(
     tmp_path: Path, monkeypatch
 ) -> None:
