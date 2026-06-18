@@ -271,8 +271,8 @@ Las colecciones agrupan packages que contienen solo skills y que los miembros in
 agh collection create "Team Skills" --description "Skills de review compartidas"
 agh collection list
 agh collection get "Team Skills"
-agh collection update "Team Skills" --name "Review Skills" --inactive
-agh collection delete "Team Skills"
+agh collection update "Team Skills" --name "Review Skills"
+agh collection delete "Review Skills"
 ```
 
 Los comandos de colección que toman una referencia aceptan ids `col_...` o nombres exactos de colecciones activas. Los ids canónicos omiten la resolución por nombre; los nombres exactos se resuelven a través del endpoint de colecciones activas por nombre.
