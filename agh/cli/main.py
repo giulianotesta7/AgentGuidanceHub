@@ -49,6 +49,10 @@ from agh.cli.package_refs import (
     PackageVersionRefResolutionError,
     resolve_package_version_ref,
 )
+from agh.cli.collection_refs import (
+    CollectionRefResolutionError,
+    resolve_collection_ref,
+)
 from agh.cli.project_refs import ProjectRefResolutionError, resolve_project_ref
 from agh.cli.user_refs import UserRefResolutionError, resolve_user_ref
 from agh.cli.workspace_pull import (
@@ -70,6 +74,7 @@ Commands:
   user         Manage users.
   token        Rotate or reset user API tokens.
   project      Manage projects and developer memberships.
+  collection   Manage collections.
   package         Create, publish, and list guidance packages.
   sync         Link this git repository to its matching AGH project.
   pull         Pull assigned guidance packages into this repository.
@@ -86,6 +91,7 @@ USAGE_ERROR_EXIT_CODE = 2
 COMMAND_CANCELLED_EXIT_CODE = 130
 PROJECT_REF_HELP = "Project id or exact name. Numeric refs are treated as ids."
 USER_REF_HELP = "User id or exact email."
+COLLECTION_REF_HELP = "Collection id (col_...) or exact active collection name."
 PACKAGE_VERSION_REF_HELP = (
     "Package ref: pkgv_..., domain/name@version, or name@version."
 )
@@ -173,6 +179,12 @@ project_package_app = typer.Typer(
     no_args_is_help=False,
     rich_markup_mode=None,
 )
+collection_app = typer.Typer(
+    cls=AghSubcommandGroup,
+    help="Manage AGH collections.",
+    no_args_is_help=False,
+    rich_markup_mode=None,
+)
 package_app = typer.Typer(
     cls=AghSubcommandGroup,
     help="Create, publish, and list guidance packages.",
@@ -207,6 +219,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(user_app, name="user")
 app.add_typer(token_app, name="token")
 app.add_typer(project_app, name="project")
+app.add_typer(collection_app, name="collection")
 app.add_typer(package_app, name="package")
 app.add_typer(agent_app, name="agent")
 app.add_typer(skill_app, name="skill")
@@ -320,6 +333,13 @@ def _resolve_project_ref(project_ref: str) -> str:
     try:
         return resolve_project_ref(project_ref, _api_request)
     except ProjectRefResolutionError as exc:
+        _fail(str(exc))
+
+
+def _resolve_collection_ref(collection_ref: str) -> str:
+    try:
+        return resolve_collection_ref(collection_ref, _api_request)
+    except CollectionRefResolutionError as exc:
         _fail(str(exc))
 
 
@@ -976,6 +996,45 @@ def _echo_project_deactivated(project: dict[str, Any]) -> None:
     )
 
 
+def _echo_collection_list(payload: dict[str, Any]) -> None:
+    collections = payload.get("collections", [])
+    if not collections:
+        typer.echo("No collections found.")
+        return
+    _echo_table(
+        ["COLLECTION_ID", "NAME", "DESCRIPTION", "STATUS"],
+        [
+            [
+                str(collection.get("id", "")),
+                str(collection.get("name", "")),
+                str(collection.get("description", "")),
+                _status_label(collection),
+            ]
+            for collection in collections
+        ],
+    )
+
+
+def _echo_collection_detail(collection: dict[str, Any]) -> None:
+    typer.echo(f"Collection: {collection.get('name', '')}")
+    typer.echo(f"Collection ID: {collection.get('id', '')}")
+    typer.echo(f"Description: {collection.get('description', '')}")
+    typer.echo(f"Status: {_status_label(collection)}")
+
+
+def _echo_collection_success(verb: str, collection: dict[str, Any]) -> None:
+    typer.echo(
+        f"{verb} collection {collection.get('name', '')} ({collection.get('id', '')})."
+    )
+    typer.echo(f"Status: {_status_label(collection)}")
+
+
+def _echo_collection_deactivated(collection: dict[str, Any]) -> None:
+    typer.echo(
+        f"Deactivated collection {collection.get('name', '')} ({collection.get('id', '')})."
+    )
+
+
 def _echo_project_member_success(
     verb: str, payload: dict[str, Any], *, project_id: str, user_id: str
 ) -> None:
@@ -1276,6 +1335,97 @@ def project_delete(
 
 def project_path(project_id: str) -> str:
     return f"/projects/{project_id}"
+
+
+@collection_app.callback(invoke_without_command=True)
+def collection_main(ctx: typer.Context) -> None:
+    """Collection administration commands."""
+    if ctx.invoked_subcommand is None:
+        typer.echo(APP_HELP)
+        raise typer.Exit(0)
+
+
+@collection_app.command(
+    "list", help="List collections visible to the authenticated user."
+)
+def collection_list() -> None:
+    _echo_collection_list(_api_request("GET", "/collections"))
+
+
+@collection_app.command("create", help="Create a collection.")
+def collection_create(
+    name: Annotated[str, typer.Argument(help="Collection display name.")],
+    description: Annotated[
+        str | None,
+        typer.Option("--description", help="Optional collection description."),
+    ] = None,
+) -> None:
+    _echo_collection_success(
+        "Created",
+        _api_request(
+            "POST",
+            "/collections",
+            body=_body_without_none(name=name, description=description),
+        ),
+    )
+
+
+@collection_app.command("get", help="Show one collection by id or exact name.")
+def collection_get(
+    collection_ref: Annotated[str, typer.Argument(help=COLLECTION_REF_HELP)],
+) -> None:
+    resolved_collection_id = _resolve_collection_ref(collection_ref)
+    _echo_collection_detail(
+        _api_request("GET", collection_path(resolved_collection_id))
+    )
+
+
+@collection_app.command(
+    "update", help="Update collection name, description, or active flag by id or name."
+)
+def collection_update(
+    collection_ref: Annotated[str, typer.Argument(help=COLLECTION_REF_HELP)],
+    name: Annotated[
+        str | None, typer.Option("--name", help="New collection name.")
+    ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", help="New collection description."),
+    ] = None,
+    active: Annotated[
+        bool | None,
+        typer.Option(
+            "--active/--inactive", help="Set whether the collection is active."
+        ),
+    ] = None,
+) -> None:
+    resolved_collection_id = _resolve_collection_ref(collection_ref)
+    _echo_collection_success(
+        "Updated",
+        _api_request(
+            "PATCH",
+            collection_path(resolved_collection_id),
+            body=_body_without_none(
+                name=name,
+                description=description,
+                active=active,
+            ),
+        ),
+    )
+
+
+@collection_app.command("delete", help="Deactivate a collection by id or exact name.")
+def collection_delete(
+    collection_ref: Annotated[str, typer.Argument(help=COLLECTION_REF_HELP)],
+) -> None:
+    resolved_collection_id = _resolve_collection_ref(collection_ref)
+    _echo_collection_deactivated(
+        _api_request("DELETE", collection_path(resolved_collection_id))
+    )
+
+
+def collection_path(collection_id: str) -> str:
+    return f"/collections/{collection_id}"
 
 
 @package_app.callback(invoke_without_command=True)
