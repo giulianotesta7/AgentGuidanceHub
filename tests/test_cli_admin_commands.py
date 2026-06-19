@@ -156,6 +156,45 @@ def _response_for(method: str, path: str) -> tuple[int, dict[str, Any]]:
         return 200, {"project_id": "prj_2", "user_id": "usr_2"}
     if (method, path) == ("DELETE", "/api/v1/projects/prj_2/members/usr_2"):
         return 200, {"project_id": "prj_2", "user_id": "usr_2", "removed": True}
+    if (method, path) == ("GET", "/api/v1/collections"):
+        return 200, {
+            "collections": [
+                {
+                    "id": "col_1",
+                    "name": "Team Skills",
+                    "description": "Shared skills",
+                    "active": True,
+                }
+            ]
+        }
+    if (method, path) == ("POST", "/api/v1/collections"):
+        return 201, {
+            "id": "col_2",
+            "name": "Ops Skills",
+            "description": "ops",
+            "active": True,
+        }
+    if (method, path) == ("GET", "/api/v1/collections/col_2"):
+        return 200, {
+            "id": "col_2",
+            "name": "Ops Skills",
+            "description": "ops",
+            "active": True,
+        }
+    if (method, path) == ("PATCH", "/api/v1/collections/col_2"):
+        return 200, {
+            "id": "col_2",
+            "name": "Ops Skills2",
+            "description": "ops2",
+            "active": False,
+        }
+    if (method, path) == ("DELETE", "/api/v1/collections/col_2"):
+        return 200, {
+            "id": "col_2",
+            "name": "Ops Skills2",
+            "description": "ops2",
+            "active": False,
+        }
     if path == "/api/v1/forbidden":
         return 403, {"detail": "forbidden"}
     if path == "/api/v1/leaky-error":
@@ -201,6 +240,7 @@ def test_cli_admin_unknown_subcommands_exit_2_with_help_first_output() -> None:
         ["token", "wrong-command"],
         ["project", "wrong-command"],
         ["project", "member", "wrong-command"],
+        ["collection", "wrong-command"],
     ]:
         result = runner.invoke(cli_app, args)
 
@@ -754,6 +794,193 @@ def test_cli_admin_commands_redact_token_fields_from_error_payloads(
     assert "****" in result.stdout
 
 
+def test_cli_collection_commands_map_to_api_and_mask_stored_token(
+    tmp_path: Path,
+) -> None:
+    server, handler, url = _serve_api()
+    env = _write_config(tmp_path, url)
+    runner = CliRunner()
+    commands = [
+        (["collection", "list"], "Team Skills"),
+        (
+            ["collection", "create", "Ops Skills", "--description", "ops"],
+            "col_2",
+        ),
+        (["collection", "get", "col_2"], "Ops Skills"),
+        (
+            [
+                "collection",
+                "update",
+                "col_2",
+                "--name",
+                "Ops Skills2",
+                "--description",
+                "ops2",
+                "--inactive",
+            ],
+            "Ops Skills2",
+        ),
+        (["collection", "delete", "col_2"], "col_2"),
+    ]
+    try:
+        for args, expected_output in commands:
+            result = runner.invoke(cli_app, args, env=env)
+            assert result.exit_code == 0, (args, result.stdout)
+            assert expected_output in result.stdout
+            assert "stored-secret-token" not in result.stdout
+    finally:
+        server.shutdown()
+
+    assert {request["authorization"] for request in handler.requests} == {
+        "Bearer stored-secret-token"
+    }
+    observed = {
+        (request["method"], request["path"]): request["body"]
+        for request in handler.requests
+    }
+    assert ("POST", "/api/v1/collections") in observed
+    assert observed[("POST", "/api/v1/collections")] == {
+        "name": "Ops Skills",
+        "description": "ops",
+    }
+    assert observed[("PATCH", "/api/v1/collections/col_2")] == {
+        "name": "Ops Skills2",
+        "description": "ops2",
+        "active": False,
+    }
+
+
+def test_cli_collection_read_and_mutation_commands_use_human_output(
+    tmp_path: Path,
+) -> None:
+    server, _handler, url = _serve_api()
+    env = _write_config(tmp_path, url)
+    runner = CliRunner()
+    try:
+        listed = runner.invoke(cli_app, ["collection", "list"], env=env)
+        created = runner.invoke(
+            cli_app,
+            ["collection", "create", "Ops Skills", "--description", "ops"],
+            env=env,
+        )
+        fetched = runner.invoke(cli_app, ["collection", "get", "col_2"], env=env)
+        updated = runner.invoke(
+            cli_app,
+            [
+                "collection",
+                "update",
+                "col_2",
+                "--name",
+                "Ops Skills2",
+                "--description",
+                "ops2",
+                "--inactive",
+            ],
+            env=env,
+        )
+        deactivated = runner.invoke(cli_app, ["collection", "delete", "col_2"], env=env)
+    finally:
+        server.shutdown()
+
+    assert listed.exit_code == 0, listed.stdout
+    listed_lines = listed.stdout.splitlines()
+    assert listed_lines[0].split() == [
+        "COLLECTION_ID",
+        "NAME",
+        "DESCRIPTION",
+        "STATUS",
+    ]
+    assert listed_lines[1].split() == [
+        "col_1",
+        "Team",
+        "Skills",
+        "Shared",
+        "skills",
+        "active",
+    ]
+    assert '"collections"' not in listed.stdout
+
+    assert created.exit_code == 0, created.stdout
+    assert created.stdout == (
+        "Created collection Ops Skills (col_2).\nStatus: active\n"
+    )
+    assert '"active"' not in created.stdout
+
+    assert fetched.exit_code == 0, fetched.stdout
+    assert fetched.stdout == (
+        "Collection: Ops Skills\n"
+        "Collection ID: col_2\n"
+        "Description: ops\n"
+        "Status: active\n"
+    )
+
+    assert updated.exit_code == 0, updated.stdout
+    assert updated.stdout == (
+        "Updated collection Ops Skills2 (col_2).\nStatus: inactive\n"
+    )
+
+    assert deactivated.exit_code == 0, deactivated.stdout
+    assert deactivated.stdout == "Deactivated collection Ops Skills2 (col_2).\n"
+
+
+def test_cli_collection_list_empty_message(monkeypatch) -> None:
+    from agh.cli import main as cli_main
+
+    monkeypatch.setattr(
+        cli_main,
+        "_api_request",
+        lambda _method, _path, **_kwargs: {"collections": []},
+    )
+    runner = CliRunner()
+
+    result = runner.invoke(cli_app, ["collection", "list"])
+
+    assert result.exit_code == 0, result.stdout
+    assert result.stdout == "No collections found.\n"
+
+
+def test_cli_collection_refs_resolve_names_and_pass_through_col_ids(
+    monkeypatch,
+) -> None:
+    from agh.cli import main as cli_main
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_api(method: str, path: str, **_kwargs):
+        calls.append((method, path))
+        if path == "/collections/by-name/Team%20Skills":
+            return {"id": "col_2", "name": "Team Skills"}
+        if path in {"/collections/col_2", "/collections/col_123"}:
+            return {
+                "id": path.rsplit("/", 1)[1],
+                "name": "Team Skills",
+                "description": "",
+                "active": True,
+            }
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cli_main, "_api_request", fake_api)
+    runner = CliRunner()
+    by_name = runner.invoke(cli_app, ["collection", "get", "Team Skills"])
+    col_id = runner.invoke(cli_app, ["collection", "get", "col_123"])
+    update_by_name = runner.invoke(
+        cli_app,
+        ["collection", "update", "Team Skills", "--description", "refreshed"],
+    )
+
+    assert by_name.exit_code == 0, by_name.stdout
+    assert "Collection ID: col_2" in by_name.stdout
+    assert col_id.exit_code == 0, col_id.stdout
+    assert "Collection ID: col_123" in col_id.stdout
+    assert update_by_name.exit_code == 0, update_by_name.stdout
+    assert "Updated collection Team Skills (col_2)." in update_by_name.stdout
+
+    assert calls.count(("GET", "/collections/by-name/Team%20Skills")) == 2
+    assert ("GET", "/collections/col_123") in calls
+    assert ("GET", "/collections/by-name/col_123") not in calls
+    assert ("PATCH", "/collections/col_2") in calls
+
+
 def test_cli_admin_help_preserves_main_manual_and_command_help() -> None:
     runner = CliRunner()
 
@@ -788,3 +1015,91 @@ def test_cli_admin_help_preserves_main_manual_and_command_help() -> None:
     assert member_help.exit_code == 0
     assert "PROJECT_ID" in member_help.stdout or "project_id" in member_help.stdout
     assert "USER_ID" in member_help.stdout or "user_id" in member_help.stdout
+    collection_group_help = runner.invoke(cli_app, ["collection", "--help"])
+    collection_help = runner.invoke(cli_app, ["collection", "create", "--help"])
+    assert collection_group_help.exit_code == 0
+    assert "create" in collection_group_help.stdout
+    assert "get" in collection_group_help.stdout
+    assert "delete" in collection_group_help.stdout
+    assert collection_help.exit_code == 0
+    assert "--description" in collection_help.stdout
+
+
+def test_cli_main_help_lists_collection_command() -> None:
+    """R2: APP_HELP must list the `collection` command."""
+    runner = CliRunner()
+    help_output = runner.invoke(cli_app, []).stdout
+
+    assert any(
+        line.strip().startswith("collection") for line in help_output.splitlines()
+    ), help_output
+    assert "Manage collections." in help_output
+
+
+def test_cli_collection_target_arguments_use_collection_ref_metavar() -> None:
+    """R2: targeted collection args accept id or name, so the metavar is COLLECTION_REF."""
+    runner = CliRunner()
+    for subcommand in ["get", "update", "delete"]:
+        help_output = runner.invoke(cli_app, ["collection", subcommand, "--help"])
+        assert help_output.exit_code == 0, help_output.stdout
+        usage_line = help_output.stdout.splitlines()[0]
+        assert "COLLECTION_REF" in usage_line, (subcommand, usage_line)
+        assert "COLLECTION_ID" not in usage_line, (subcommand, usage_line)
+
+
+def test_cli_collection_delete_resolves_name_before_delete(monkeypatch) -> None:
+    """R3: `collection delete <name>` resolves to a col_ id before issuing DELETE."""
+    from agh.cli import main as cli_main
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_api(method: str, path: str, **_kwargs):
+        calls.append((method, path))
+        if path == "/collections/by-name/Team%20Skills":
+            return {"id": "col_2", "name": "Team Skills"}
+        if (method, path) == ("DELETE", "/collections/col_2"):
+            return {
+                "id": "col_2",
+                "name": "Team Skills",
+                "description": "",
+                "active": False,
+            }
+        raise AssertionError((method, path))
+
+    monkeypatch.setattr(cli_main, "_api_request", fake_api)
+    result = CliRunner().invoke(cli_app, ["collection", "delete", "Team Skills"])
+
+    assert result.exit_code == 0, result.stdout
+    assert result.stdout == "Deactivated collection Team Skills (col_2).\n"
+    assert ("GET", "/collections/by-name/Team%20Skills") in calls
+    assert ("DELETE", "/collections/col_2") in calls
+    # DELETE must target the resolved id, never the raw name/resolver path.
+    assert ("DELETE", "/collections/by-name/Team%20Skills") not in calls
+    assert ("DELETE", "/collections/Team%20Skills") not in calls
+
+
+def test_cli_collection_resolver_failure_exits_with_message(monkeypatch) -> None:
+    """R3: a malformed resolver payload surfaces as a CLI failure, not a crash."""
+    from agh.cli import main as cli_main
+
+    calls: list[tuple[str, str]] = []
+
+    def fake_api(method: str, path: str, **_kwargs):
+        calls.append((method, path))
+        if path == "/collections/by-name/Ghost":
+            # 200 OK but the resolver payload is malformed (no collection id).
+            return {"name": "Ghost"}
+        raise AssertionError((method, path))
+
+    monkeypatch.setattr(cli_main, "_api_request", fake_api)
+    result = CliRunner().invoke(cli_app, ["collection", "get", "Ghost"])
+
+    assert result.exit_code == 1, result.stdout
+    assert (
+        "collection resolver response did not include a collection id" in result.stdout
+    )
+    # No follow-up fetch against an unresolved id should occur.
+    assert not any(
+        path.startswith("/collections/") and "/by-name/" not in path
+        for _method, path in calls
+    )
