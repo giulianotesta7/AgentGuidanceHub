@@ -264,8 +264,8 @@ Collections group skill-only packages that members install through `agh skill ..
 agh collection create "Team Skills" --description "Shared review skills"
 agh collection list
 agh collection get "Team Skills"
-agh collection update "Team Skills" --name "Review Skills" --inactive
-agh collection delete "Team Skills"
+agh collection update "Team Skills" --name "Review Skills"
+agh collection delete "Review Skills"
 ```
 
 Collection commands that take a collection reference accept `col_...` ids or exact active collection names. Canonical ids skip name resolution; exact names resolve through the active-collection by-name endpoint.

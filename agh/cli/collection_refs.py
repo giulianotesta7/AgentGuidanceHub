@@ -4,6 +4,8 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
+from agh.common.ids import is_valid_prefixed_id
+
 
 class CollectionRefResolutionError(ValueError):
     """Raised when the collection resolver endpoint returns an invalid payload."""
@@ -19,7 +21,7 @@ def resolve_collection_ref(collection_ref: str, api_request: ApiRequest) -> str:
     treated as an exact active collection name and resolved through the API.
     """
 
-    if collection_ref.startswith("col_"):
+    if is_valid_prefixed_id(collection_ref, "col"):
         return collection_ref
 
     payload = api_request(

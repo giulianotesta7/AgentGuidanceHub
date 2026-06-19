@@ -160,7 +160,7 @@ def _response_for(method: str, path: str) -> tuple[int, dict[str, Any]]:
         return 200, {
             "collections": [
                 {
-                    "id": "col_1",
+                    "id": "col_0000000000000001",
                     "name": "Team Skills",
                     "description": "Shared skills",
                     "active": True,
@@ -169,38 +169,38 @@ def _response_for(method: str, path: str) -> tuple[int, dict[str, Any]]:
         }
     if (method, path) == ("POST", "/api/v1/collections"):
         return 201, {
-            "id": "col_2",
+            "id": "col_0000000000000002",
             "name": "Ops Skills",
             "description": "ops",
             "active": True,
         }
-    if (method, path) == ("GET", "/api/v1/collections/col_2"):
+    if (method, path) == ("GET", "/api/v1/collections/col_0000000000000002"):
         return 200, {
-            "id": "col_2",
+            "id": "col_0000000000000002",
             "name": "Ops Skills",
             "description": "ops",
             "active": True,
         }
-    if (method, path) == ("PATCH", "/api/v1/collections/col_2"):
+    if (method, path) == ("PATCH", "/api/v1/collections/col_0000000000000002"):
         return 200, {
-            "id": "col_2",
+            "id": "col_0000000000000002",
             "name": "Ops Skills2",
             "description": "ops2",
             "active": False,
         }
-    if (method, path) == ("DELETE", "/api/v1/collections/col_2"):
+    if (method, path) == ("DELETE", "/api/v1/collections/col_0000000000000002"):
         return 200, {
-            "id": "col_2",
+            "id": "col_0000000000000002",
             "name": "Ops Skills2",
             "description": "ops2",
             "active": False,
         }
-    if (method, path) == ("GET", "/api/v1/collections/col_2/packages"):
+    if (method, path) == ("GET", "/api/v1/collections/col_0000000000000002/packages"):
         return 200, {
             "collection_packages": [
                 {
                     "id": "casn_1",
-                    "collection_id": "col_2",
+                    "collection_id": "col_0000000000000002",
                     "package_id": "pkg_1",
                     "package_ref": "acme/reviewer@latest",
                     "resolved_ref": "acme/reviewer@1.0.0",
@@ -213,27 +213,37 @@ def _response_for(method: str, path: str) -> tuple[int, dict[str, Any]]:
                 }
             ]
         }
-    if (method, path) == ("POST", "/api/v1/collections/col_2/packages"):
+    if (method, path) == ("POST", "/api/v1/collections/col_0000000000000002/packages"):
         return 201, {
             "id": "casn_1",
-            "collection_id": "col_2",
+            "collection_id": "col_0000000000000002",
             "package_ref": "acme/reviewer@latest",
             "resolved_ref": "acme/reviewer@1.0.0",
             "position": 5,
             "active": True,
         }
-    if (method, path) == ("PATCH", "/api/v1/collections/col_2/packages/casn_1"):
+    if (method, path) == (
+        "PATCH",
+        "/api/v1/collections/col_0000000000000002/packages/casn_1",
+    ):
         return 200, {
             "id": "casn_1",
-            "collection_id": "col_2",
+            "collection_id": "col_0000000000000002",
             "package_ref": "acme/reviewer@1.0.0",
             "resolved_ref": "acme/reviewer@1.0.0",
             "position": 7,
             "active": False,
         }
-    if (method, path) == ("DELETE", "/api/v1/collections/col_2/packages/casn_1"):
-        return 200, {"id": "casn_1", "collection_id": "col_2", "active": False}
-    if (method, path) == ("POST", "/api/v1/collections/col_3/packages"):
+    if (method, path) == (
+        "DELETE",
+        "/api/v1/collections/col_0000000000000002/packages/casn_1",
+    ):
+        return 200, {
+            "id": "casn_1",
+            "collection_id": "col_0000000000000002",
+            "active": False,
+        }
+    if (method, path) == ("POST", "/api/v1/collections/col_0000000000000003/packages"):
         # Server rejects an instruction-bearing package as not skill-only.
         return 400, {
             "detail": "package contains instructions and cannot be used as a collection skill"
@@ -847,14 +857,14 @@ def test_cli_collection_commands_map_to_api_and_mask_stored_token(
         (["collection", "list"], "Team Skills"),
         (
             ["collection", "create", "Ops Skills", "--description", "ops"],
-            "col_2",
+            "col_0000000000000002",
         ),
-        (["collection", "get", "col_2"], "Ops Skills"),
+        (["collection", "get", "col_0000000000000002"], "Ops Skills"),
         (
             [
                 "collection",
                 "update",
-                "col_2",
+                "col_0000000000000002",
                 "--name",
                 "Ops Skills2",
                 "--description",
@@ -863,7 +873,7 @@ def test_cli_collection_commands_map_to_api_and_mask_stored_token(
             ],
             "Ops Skills2",
         ),
-        (["collection", "delete", "col_2"], "col_2"),
+        (["collection", "delete", "col_0000000000000002"], "col_0000000000000002"),
     ]
     try:
         for args, expected_output in commands:
@@ -886,7 +896,7 @@ def test_cli_collection_commands_map_to_api_and_mask_stored_token(
         "name": "Ops Skills",
         "description": "ops",
     }
-    assert observed[("PATCH", "/api/v1/collections/col_2")] == {
+    assert observed[("PATCH", "/api/v1/collections/col_0000000000000002")] == {
         "name": "Ops Skills2",
         "description": "ops2",
         "active": False,
@@ -906,13 +916,15 @@ def test_cli_collection_read_and_mutation_commands_use_human_output(
             ["collection", "create", "Ops Skills", "--description", "ops"],
             env=env,
         )
-        fetched = runner.invoke(cli_app, ["collection", "get", "col_2"], env=env)
+        fetched = runner.invoke(
+            cli_app, ["collection", "get", "col_0000000000000002"], env=env
+        )
         updated = runner.invoke(
             cli_app,
             [
                 "collection",
                 "update",
-                "col_2",
+                "col_0000000000000002",
                 "--name",
                 "Ops Skills2",
                 "--description",
@@ -921,7 +933,9 @@ def test_cli_collection_read_and_mutation_commands_use_human_output(
             ],
             env=env,
         )
-        deactivated = runner.invoke(cli_app, ["collection", "delete", "col_2"], env=env)
+        deactivated = runner.invoke(
+            cli_app, ["collection", "delete", "col_0000000000000002"], env=env
+        )
     finally:
         server.shutdown()
 
@@ -934,7 +948,7 @@ def test_cli_collection_read_and_mutation_commands_use_human_output(
         "STATUS",
     ]
     assert listed_lines[1].split() == [
-        "col_1",
+        "col_0000000000000001",
         "Team",
         "Skills",
         "Shared",
@@ -945,25 +959,28 @@ def test_cli_collection_read_and_mutation_commands_use_human_output(
 
     assert created.exit_code == 0, created.stdout
     assert created.stdout == (
-        "Created collection Ops Skills (col_2).\nStatus: active\n"
+        "Created collection Ops Skills (col_0000000000000002).\nStatus: active\n"
     )
     assert '"active"' not in created.stdout
 
     assert fetched.exit_code == 0, fetched.stdout
     assert fetched.stdout == (
         "Collection: Ops Skills\n"
-        "Collection ID: col_2\n"
+        "Collection ID: col_0000000000000002\n"
         "Description: ops\n"
         "Status: active\n"
     )
 
     assert updated.exit_code == 0, updated.stdout
     assert updated.stdout == (
-        "Updated collection Ops Skills2 (col_2).\nStatus: inactive\n"
+        "Updated collection Ops Skills2 (col_0000000000000002).\nStatus: inactive\n"
     )
 
     assert deactivated.exit_code == 0, deactivated.stdout
-    assert deactivated.stdout == "Deactivated collection Ops Skills2 (col_2).\n"
+    assert (
+        deactivated.stdout
+        == "Deactivated collection Ops Skills2 (col_0000000000000002).\n"
+    )
 
 
 def test_cli_collection_list_empty_message(monkeypatch) -> None:
@@ -992,8 +1009,14 @@ def test_cli_collection_refs_resolve_names_and_pass_through_col_ids(
     def fake_api(method: str, path: str, **_kwargs):
         calls.append((method, path))
         if path == "/collections/by-name/Team%20Skills":
-            return {"id": "col_2", "name": "Team Skills"}
-        if path in {"/collections/col_2", "/collections/col_123"}:
+            return {"id": "col_0000000000000002", "name": "Team Skills"}
+        if path == "/collections/by-name/col_team":
+            return {"id": "col_0000000000000003", "name": "col_team"}
+        if path in {
+            "/collections/col_0000000000000002",
+            "/collections/col_0000000000000003",
+            "/collections/col_0000000000000123",
+        }:
             return {
                 "id": path.rsplit("/", 1)[1],
                 "name": "Team Skills",
@@ -1005,23 +1028,31 @@ def test_cli_collection_refs_resolve_names_and_pass_through_col_ids(
     monkeypatch.setattr(cli_main, "_api_request", fake_api)
     runner = CliRunner()
     by_name = runner.invoke(cli_app, ["collection", "get", "Team Skills"])
-    col_id = runner.invoke(cli_app, ["collection", "get", "col_123"])
+    col_prefixed_name = runner.invoke(cli_app, ["collection", "get", "col_team"])
+    col_id = runner.invoke(cli_app, ["collection", "get", "col_0000000000000123"])
     update_by_name = runner.invoke(
         cli_app,
         ["collection", "update", "Team Skills", "--description", "refreshed"],
     )
 
     assert by_name.exit_code == 0, by_name.stdout
-    assert "Collection ID: col_2" in by_name.stdout
+    assert "Collection ID: col_0000000000000002" in by_name.stdout
+    assert col_prefixed_name.exit_code == 0, col_prefixed_name.stdout
+    assert "Collection ID: col_0000000000000003" in col_prefixed_name.stdout
     assert col_id.exit_code == 0, col_id.stdout
-    assert "Collection ID: col_123" in col_id.stdout
+    assert "Collection ID: col_0000000000000123" in col_id.stdout
     assert update_by_name.exit_code == 0, update_by_name.stdout
-    assert "Updated collection Team Skills (col_2)." in update_by_name.stdout
+    assert (
+        "Updated collection Team Skills (col_0000000000000002)."
+        in update_by_name.stdout
+    )
 
     assert calls.count(("GET", "/collections/by-name/Team%20Skills")) == 2
-    assert ("GET", "/collections/col_123") in calls
-    assert ("GET", "/collections/by-name/col_123") not in calls
-    assert ("PATCH", "/collections/col_2") in calls
+    assert ("GET", "/collections/by-name/col_team") in calls
+    assert ("GET", "/collections/col_0000000000000003") in calls
+    assert ("GET", "/collections/col_0000000000000123") in calls
+    assert ("GET", "/collections/by-name/col_0000000000000123") not in calls
+    assert ("PATCH", "/collections/col_0000000000000002") in calls
 
 
 def test_cli_admin_help_preserves_main_manual_and_command_help() -> None:
@@ -1099,10 +1130,10 @@ def test_cli_collection_delete_resolves_name_before_delete(monkeypatch) -> None:
     def fake_api(method: str, path: str, **_kwargs):
         calls.append((method, path))
         if path == "/collections/by-name/Team%20Skills":
-            return {"id": "col_2", "name": "Team Skills"}
-        if (method, path) == ("DELETE", "/collections/col_2"):
+            return {"id": "col_0000000000000002", "name": "Team Skills"}
+        if (method, path) == ("DELETE", "/collections/col_0000000000000002"):
             return {
-                "id": "col_2",
+                "id": "col_0000000000000002",
                 "name": "Team Skills",
                 "description": "",
                 "active": False,
@@ -1113,9 +1144,11 @@ def test_cli_collection_delete_resolves_name_before_delete(monkeypatch) -> None:
     result = CliRunner().invoke(cli_app, ["collection", "delete", "Team Skills"])
 
     assert result.exit_code == 0, result.stdout
-    assert result.stdout == "Deactivated collection Team Skills (col_2).\n"
+    assert (
+        result.stdout == "Deactivated collection Team Skills (col_0000000000000002).\n"
+    )
     assert ("GET", "/collections/by-name/Team%20Skills") in calls
-    assert ("DELETE", "/collections/col_2") in calls
+    assert ("DELETE", "/collections/col_0000000000000002") in calls
     # DELETE must target the resolved id, never the raw name/resolver path.
     assert ("DELETE", "/collections/by-name/Team%20Skills") not in calls
     assert ("DELETE", "/collections/Team%20Skills") not in calls
@@ -1156,13 +1189,13 @@ def test_cli_collection_package_commands_map_to_api_and_mask_stored_token(
     env = _write_config(tmp_path, url)
     runner = CliRunner()
     commands = [
-        (["collection", "package", "list", "col_2"], "casn_1"),
+        (["collection", "package", "list", "col_0000000000000002"], "casn_1"),
         (
             [
                 "collection",
                 "package",
                 "add",
-                "col_2",
+                "col_0000000000000002",
                 "acme/reviewer@latest",
                 "--position",
                 "5",
@@ -1174,7 +1207,7 @@ def test_cli_collection_package_commands_map_to_api_and_mask_stored_token(
                 "collection",
                 "package",
                 "update",
-                "col_2",
+                "col_0000000000000002",
                 "casn_1",
                 "--package-ref",
                 "acme/reviewer@1.0.0",
@@ -1185,7 +1218,7 @@ def test_cli_collection_package_commands_map_to_api_and_mask_stored_token(
             "Status: inactive",
         ),
         (
-            ["collection", "package", "remove", "col_2", "casn_1"],
+            ["collection", "package", "remove", "col_0000000000000002", "casn_1"],
             "Removed assignment casn_1",
         ),
     ]
@@ -1205,16 +1238,21 @@ def test_cli_collection_package_commands_map_to_api_and_mask_stored_token(
         (request["method"], request["path"]): request["body"]
         for request in handler.requests
     }
-    assert observed[("POST", "/api/v1/collections/col_2/packages")] == {
+    assert observed[("POST", "/api/v1/collections/col_0000000000000002/packages")] == {
         "package_ref": "acme/reviewer@latest",
         "position": 5,
     }
-    assert observed[("PATCH", "/api/v1/collections/col_2/packages/casn_1")] == {
+    assert observed[
+        ("PATCH", "/api/v1/collections/col_0000000000000002/packages/casn_1")
+    ] == {
         "package_ref": "acme/reviewer@1.0.0",
         "position": 7,
         "active": False,
     }
-    assert ("DELETE", "/api/v1/collections/col_2/packages/casn_1") in observed
+    assert (
+        "DELETE",
+        "/api/v1/collections/col_0000000000000002/packages/casn_1",
+    ) in observed
 
 
 def test_cli_collection_package_list_empty_message(monkeypatch) -> None:
@@ -1226,7 +1264,9 @@ def test_cli_collection_package_list_empty_message(monkeypatch) -> None:
         "_api_request",
         lambda _method, _path, **_kwargs: {"collection_packages": []},
     )
-    result = CliRunner().invoke(cli_app, ["collection", "package", "list", "col_2"])
+    result = CliRunner().invoke(
+        cli_app, ["collection", "package", "list", "col_0000000000000002"]
+    )
 
     assert result.exit_code == 0, result.stdout
     assert result.stdout == "No assigned packages found.\n"
@@ -1247,7 +1287,7 @@ def test_cli_collection_package_mutation_commands_use_human_output(
                 "collection",
                 "package",
                 "add",
-                "col_2",
+                "col_0000000000000002",
                 "acme/reviewer@latest",
                 "--position",
                 "5",
@@ -1260,7 +1300,7 @@ def test_cli_collection_package_mutation_commands_use_human_output(
                 "collection",
                 "package",
                 "update",
-                "col_2",
+                "col_0000000000000002",
                 "casn_1",
                 "--package-ref",
                 "acme/reviewer@1.0.0",
@@ -1271,14 +1311,16 @@ def test_cli_collection_package_mutation_commands_use_human_output(
             env=env,
         )
         removed = runner.invoke(
-            cli_app, ["collection", "package", "remove", "col_2", "casn_1"], env=env
+            cli_app,
+            ["collection", "package", "remove", "col_0000000000000002", "casn_1"],
+            env=env,
         )
     finally:
         server.shutdown()
 
     assert added.exit_code == 0, added.stdout
     assert added.stdout == (
-        "Assigned acme/reviewer@latest to collection col_2.\n"
+        "Assigned acme/reviewer@latest to collection col_0000000000000002.\n"
         "Resolved: acme/reviewer@1.0.0\n"
         "Assignment: casn_1\n"
     )
@@ -1286,7 +1328,7 @@ def test_cli_collection_package_mutation_commands_use_human_output(
 
     assert updated.exit_code == 0, updated.stdout
     assert updated.stdout == (
-        "Updated assignment casn_1 on collection col_2.\n"
+        "Updated assignment casn_1 on collection col_0000000000000002.\n"
         "Package: acme/reviewer@1.0.0\n"
         "Resolved: acme/reviewer@1.0.0\n"
         "Position: 7\n"
@@ -1294,13 +1336,16 @@ def test_cli_collection_package_mutation_commands_use_human_output(
     )
 
     assert removed.exit_code == 0, removed.stdout
-    assert removed.stdout == "Removed assignment casn_1 from collection col_2.\n"
+    assert (
+        removed.stdout
+        == "Removed assignment casn_1 from collection col_0000000000000002.\n"
+    )
 
 
 def test_cli_collection_package_commands_resolve_collection_names_and_skip_resolver_for_col_ids(
     monkeypatch,
 ) -> None:
-    """3.2: package commands resolve exact collection names and skip the resolver for col_... ids."""
+    """3.2: package commands resolve exact names and skip valid col_... ids."""
     from agh.cli import main as cli_main
 
     calls: list[tuple[str, str]] = []
@@ -1308,10 +1353,16 @@ def test_cli_collection_package_commands_resolve_collection_names_and_skip_resol
     def fake_api(method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         calls.append((method, path))
         if path == "/collections/by-name/Team%20Skills":
-            return {"id": "col_2", "name": "Team Skills"}
-        if path in {"/collections/col_2/packages", "/collections/col_123/packages"}:
+            return {"id": "col_0000000000000002", "name": "Team Skills"}
+        if path == "/collections/by-name/col_team":
+            return {"id": "col_0000000000000003", "name": "col_team"}
+        if path in {
+            "/collections/col_0000000000000002/packages",
+            "/collections/col_0000000000000003/packages",
+            "/collections/col_0000000000000123/packages",
+        }:
             return {"collection_packages": []}
-        if (method, path) == ("POST", "/collections/col_2/packages"):
+        if (method, path) == ("POST", "/collections/col_0000000000000002/packages"):
             return {
                 "id": "casn_1",
                 "package_ref": kwargs["body"]["package_ref"],
@@ -1331,19 +1382,27 @@ def test_cli_collection_package_commands_resolve_collection_names_and_skip_resol
         cli_app,
         ["collection", "package", "add", "Team Skills", "acme/reviewer@latest"],
     )
-    listed_by_id = runner.invoke(cli_app, ["collection", "package", "list", "col_123"])
+    listed_by_prefixed_name = runner.invoke(
+        cli_app, ["collection", "package", "list", "col_team"]
+    )
+    listed_by_id = runner.invoke(
+        cli_app, ["collection", "package", "list", "col_0000000000000123"]
+    )
 
     assert listed_by_name.exit_code == 0, listed_by_name.stdout
     assert added_by_name.exit_code == 0, added_by_name.stdout
+    assert listed_by_prefixed_name.exit_code == 0, listed_by_prefixed_name.stdout
     assert listed_by_id.exit_code == 0, listed_by_id.stdout
 
     # Name targets resolve through the by-name endpoint before the package request.
     assert calls.count(("GET", "/collections/by-name/Team%20Skills")) == 2
-    assert ("GET", "/collections/col_2/packages") in calls
-    assert ("POST", "/collections/col_2/packages") in calls
+    assert ("GET", "/collections/by-name/col_team") in calls
+    assert ("GET", "/collections/col_0000000000000002/packages") in calls
+    assert ("POST", "/collections/col_0000000000000002/packages") in calls
+    assert ("GET", "/collections/col_0000000000000003/packages") in calls
     # Canonical col_... ids skip the resolver entirely.
-    assert ("GET", "/collections/col_123/packages") in calls
-    assert ("GET", "/collections/by-name/col_123") not in calls
+    assert ("GET", "/collections/col_0000000000000123/packages") in calls
+    assert ("GET", "/collections/by-name/col_0000000000000123") not in calls
 
 
 def test_cli_collection_package_add_surfaces_server_skill_only_rejection(
@@ -1364,7 +1423,13 @@ def test_cli_collection_package_add_surfaces_server_skill_only_rejection(
     try:
         result = CliRunner().invoke(
             cli_app,
-            ["collection", "package", "add", "col_3", "acme/instructions@latest"],
+            [
+                "collection",
+                "package",
+                "add",
+                "col_0000000000000003",
+                "acme/instructions@latest",
+            ],
             env=env,
         )
     finally:
@@ -1379,6 +1444,6 @@ def test_cli_collection_package_add_surfaces_server_skill_only_rejection(
     assert "HTTP 400" in result.stdout
     # The CLI forwards the package_ref verbatim and never claims success.
     assert "Assigned" not in result.stdout
-    assert ("POST", "/api/v1/collections/col_3/packages") in {
+    assert ("POST", "/api/v1/collections/col_0000000000000003/packages") in {
         (request["method"], request["path"]) for request in handler.requests
     }
