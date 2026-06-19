@@ -255,19 +255,16 @@ jobs:
       - github-release
 
     steps:
-      - name: Checkout Homebrew tap
-        uses: actions/checkout@v4
-        with:
-          repository: giulianotesta7/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          persist-credentials: false
-
-      - name: Register local tap checkout
-        run: brew tap giulianotesta7/homebrew-tap "$PWD"
+      - name: Tap Homebrew repository
+        id: tap
+        run: |
+          brew tap giulianotesta7/homebrew-tap
+          echo "dir=$(brew --repository giulianotesta7/homebrew-tap)" >> "$GITHUB_OUTPUT"
 
       - name: Update formula from PyPI
         env:
           VERSION: ${{ needs.validate.outputs.version }}
+          TAP_DIR: ${{ steps.tap.outputs.dir }}
         run: |
           python - <<'PY'
           import hashlib
@@ -278,7 +275,7 @@ jobs:
           from pathlib import Path
 
           version = os.environ["VERSION"]
-          formula_path = Path("Formula/agh.rb")
+          formula_path = Path(os.environ["TAP_DIR"]) / "Formula/agh.rb"
           data_url = "https://pypi.org/pypi/agh/json"
 
           with urllib.request.urlopen(data_url, timeout=30) as response:
@@ -318,22 +315,46 @@ jobs:
           print(f"sha256: {sha256}")
           PY
 
-      - name: Update Python resources
-        run: brew update-python-resources Formula/agh.rb
-
       - name: Audit formula
-        run: brew audit --strict --online Formula/agh.rb
+        run: brew audit --strict --online giulianotesta7/tap/agh
 
       - name: Create Homebrew tap pull request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          branch: agh-${{ needs.validate.outputs.version }}
-          delete-branch: true
-          commit-message: agh ${{ needs.validate.outputs.version }}
-          title: agh ${{ needs.validate.outputs.version }}
-          body: |
-            Updates `agh` to `${{ needs.validate.outputs.version }}`.
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAP_DIR: ${{ steps.tap.outputs.dir }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
 
-            Source release: https://github.com/giulianotesta7/AgentGuidanceHub/releases/tag/v${{ needs.validate.outputs.version }}
-            PyPI package: https://pypi.org/project/agh/${{ needs.validate.outputs.version }}/
+          cd "$TAP_DIR"
+
+          if git diff --quiet -- Formula/agh.rb; then
+            echo "Formula/agh.rb is already up to date."
+            exit 0
+          fi
+
+          branch="agh-${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add Formula/agh.rb
+          git commit -m "agh ${VERSION}"
+          git push --force-with-lease \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/giulianotesta7/homebrew-tap.git" \
+            "$branch"
+
+          body=$'Updates `agh` to `'"${VERSION}"$'`.\n\nSource release: https://github.com/giulianotesta7/AgentGuidanceHub/releases/tag/v'"${VERSION}"$'\nPyPI package: https://pypi.org/project/agh/'"${VERSION}"$'/'
+          if gh pr view "$branch" --repo giulianotesta7/homebrew-tap >/dev/null 2>&1; then
+            gh pr edit "$branch" \
+              --repo giulianotesta7/homebrew-tap \
+              --title "agh ${VERSION}" \
+              --body "$body"
+          else
+            gh pr create \
+              --repo giulianotesta7/homebrew-tap \
+              --head "$branch" \
+              --base main \
+              --title "agh ${VERSION}" \
+              --body "$body"
+          fi
