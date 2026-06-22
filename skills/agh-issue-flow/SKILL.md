@@ -15,6 +15,8 @@ Load this skill when creating, shaping, or triaging GitHub issues for Agent Guid
 
 Use the current AGH policy: issues are for useful discussion and traceability, not mandatory approval before every PR. Small, clear work can go straight to PR; issues help when the problem, scope, or desired behavior needs conversation first.
 
+Do not use this skill to prepare a PR body or branch; load `agh-branch-pr`. Do not create an issue when the change is small, clear, and ready for direct PR.
+
 ## Hard Rules
 
 1. **Do not treat issues as PR permission slips** — AGH does not require `status:approved` before work starts.

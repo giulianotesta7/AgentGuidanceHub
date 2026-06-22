@@ -499,3 +499,11 @@ AGH includes project-specific skills adapted from third-party skill workflows.
   [`Gentleman-Programming/gentle-ai`](https://github.com/Gentleman-Programming/gentle-ai),
   licensed under Apache-2.0, and modified for AGH's PR-first contribution policy,
   minimal labels, Python/uv validation, and single-maintainer review flow.
+- `skills/agh-docs-alignment` is adapted from `skills/docs-alignment/SKILL.md` in
+  [`Gentleman-Programming/engram`](https://github.com/Gentleman-Programming/engram/tree/main/skills/docs-alignment),
+  licensed under Apache-2.0, and modified for AGH's README-as-guide model,
+  bilingual mirror policy, docs-test validation, and PR-first contribution flow.
+- `skills/agh-testing-coverage` is adapted from `skills/testing-coverage/SKILL.md`
+  in [`Gentleman-Programming/engram`](https://github.com/Gentleman-Programming/engram/tree/main/skills/testing-coverage),
+  licensed under Apache-2.0, and modified for AGH's Python/uv, FastAPI/Typer,
+  Docker, docs-guidance, and package-validation workflow.

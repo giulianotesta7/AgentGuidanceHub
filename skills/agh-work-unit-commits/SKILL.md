@@ -13,7 +13,7 @@ metadata:
 
 Load this skill when deciding what belongs in each AGH commit, how to split a PR, or whether a change is too large for one review.
 
-Use it with `agh-branch-pr` before committing or opening a PR. AGH prefers one focused change per PR and a 400 changed-line review budget.
+Use it with `agh-branch-pr` before committing or opening a PR. AGH prefers one focused change per PR and the 400 changed-line review budget.
 
 ## Hard Rules
 
@@ -23,7 +23,7 @@ Use it with `agh-branch-pr` before committing or opening a PR. AGH prefers one f
 | Do not split by file type | Avoid separate `models`, `routes`, `tests`, or `docs` commits when none makes sense alone. |
 | Keep validation with the change | Tests, docs, fixtures, or workflow assertions belong with the unit they prove. |
 | Keep user-facing docs mirrored | If `README.md` changes user-facing behavior, update `README.es.md` in the same work unit unless intentionally out of scope. |
-| Stay reviewable | Aim for 400 changed lines or less per PR. Split by behavior or workflow when the diff grows. |
+| Stay reviewable | Aim for the 400 changed-line review budget. Split by behavior or workflow when the diff grows. |
 | Explain unavoidable size | If a large diff must stay together, document the reason in the PR body. |
 | No AI attribution | Never add `Co-Authored-By` or AI-generated trailers. |
 
@@ -53,7 +53,7 @@ Before committing, confirm:
 
 | Condition | Action |
 | --- | --- |
-| One focused unit under 400 changed lines | Keep one PR and one or more clear commits. |
+| One focused unit within the 400 changed-line review budget | Keep one PR and one or more clear commits. |
 | Multiple independent behaviors | Split into separate commits, and separate PRs if review would be mixed. |
 | Docs plus code for one behavior | Keep together in the same unit. |
 | Runtime code plus broad docs rewrite | Split unless the docs are required to understand the behavior. |
@@ -139,7 +139,7 @@ Return:
 - Commit subject for each work unit.
 - Files or areas included in each unit.
 - Validation paired with each unit.
-- Review-size estimate and whether it stays under 400 changed lines.
+- Review-size estimate and whether it stays within the 400 changed-line review budget.
 - Any size exception rationale.
 
 ## References

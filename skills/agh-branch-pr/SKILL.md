@@ -15,11 +15,13 @@ Load this skill when creating a branch, preparing commits, opening a pull reques
 
 Use the current AGH policy: PR-first is allowed. Issues are for discussion, questions, unclear scope, or idea validation before coding; they are not permission slips for every change.
 
+Do not use this skill to decide commit boundaries for a large diff; load `agh-work-unit-commits` first. Do not use it to design chained PR strategy; load `agh-chained-pr` when the 400 changed-line review budget may be exceeded.
+
 ## Hard Rules
 
 1. **Do not require an issue for small direct PRs** — docs, small fixes, obvious refactors, and focused workflow changes can go straight to PR.
 2. **Use an issue when discussion is needed** — open or link one for questions, unclear scope, disputed behavior, or idea validation before coding.
-3. **Keep PRs reviewable** — aim for 400 changed lines or less (`additions + deletions`). Split large changes or explain why the size is unavoidable in the PR body.
+3. **Keep PRs reviewable** — aim for the 400 changed-line review budget (`additions + deletions`). Split large changes or explain why the size is unavoidable in the PR body.
 4. **Use Conventional Commits** — examples: `docs: simplify contribution flow`, `fix(cli): handle invalid config`.
 5. **Run relevant validation** — use AGH's Python/uv validation commands; add Docker validation only for Docker/runtime changes.
 6. **No invented gates** — do not require `status:approved`, `type:*` labels, mandatory issue links, or labels not documented in `CONTRIBUTING.md`.
@@ -45,7 +47,7 @@ Use the current AGH policy: PR-first is allowed. Issues are for discussion, ques
 | Typo, docs-only update, small bug fix, clear refactor | Open a direct PR. Leave `Related issue` blank or say none. |
 | Question, unclear behavior, uncertain scope, idea validation | Open or link an issue first. |
 | Large but maintainer-approved change with clear scope | Direct PR is allowed; explain context and size. |
-| PR exceeds 400 changed lines | Split it, or explain why it stays large in `Context` or `Notes`. |
+| PR exceeds the 400 changed-line review budget | Split it, or explain why it stays large in `Context` or `Notes`. |
 
 ## Branch Naming
 
