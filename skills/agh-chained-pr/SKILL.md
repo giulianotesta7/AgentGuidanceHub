@@ -17,7 +17,7 @@ Use it with `agh-work-unit-commits` and `agh-branch-pr`. AGH is PR-first: do not
 
 ## Hard Rules
 
-- Split PRs over **400 changed lines** unless the maintainer explicitly accepts the size and the PR body explains why.
+- Split PRs that exceed the **400 changed-line review budget** unless the maintainer explicitly accepts the size and the PR body explains why.
 - Use one deliverable work unit per PR whenever possible.
 - Keep tests, docs, fixtures, and validation with the slice they prove.
 - Prefer **stacked-to-main** when each slice can land independently.
@@ -30,7 +30,7 @@ Use it with `agh-work-unit-commits` and `agh-branch-pr`. AGH is PR-first: do not
 
 | Condition | Action |
 | --- | --- |
-| PR is focused and ≤400 changed lines | Keep one PR. |
+| PR is focused and within the 400 changed-line review budget | Keep one PR. |
 | PR is >400 lines but can split by behavior/workflow | Split into stacked PRs to `main`. |
 | Slices depend on prior code but can land in order | Use stacked-to-main. |
 | Work must be reviewed in slices but released/integrated together | Use feature branch chain with a draft tracker PR. |
