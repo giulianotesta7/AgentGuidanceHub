@@ -66,6 +66,8 @@ Delivery strategy: ask-always (approved chained PRs)
 - [x] 2b.3 RED/GREEN: Corrupt config recovery for `logout`, and for
       `whoami`/API-backed commands via `_api_request`
       (`load_config` raises `ConfigCorruptError` → recovery guidance).
+      Judgment Day Round 1: extended to `login`, `sync`, and linked `pull`
+      (regression tests for each).
 
 ### 2c — Target (PR2c)
 

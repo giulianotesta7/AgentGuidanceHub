@@ -678,6 +678,34 @@ def test_whoami_corrupt_config_shows_recovery_guidance(tmp_path: Path) -> None:
     assert "oops" in config_path.read_text("utf-8")
 
 
+def test_login_corrupt_config_shows_recovery_guidance(tmp_path: Path) -> None:
+    """Corrupt config must surface recovery guidance before any login prompt.
+
+    Regression for the Judgment Day finding that login surfaced raw invalid
+    config text instead of the shared recovery guidance used by whoami/logout.
+    """
+    runner = CliRunner()
+    config_path = tmp_path / "config.toml"
+    _write_corrupt_config(config_path)
+
+    result = runner.invoke(
+        cli_app,
+        ["login", "--email", "owner@example.com", "--token", "good-token"],
+        env={"AGH_CONFIG_FILE": str(config_path)},
+    )
+
+    assert result.exit_code != 0
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+    # Same recovery guidance as whoami/logout/config
+    assert str(config_path) in result.stdout
+    assert "invalid" in result.stdout.lower()
+    assert "config set" in result.stdout.lower()
+    # Must not have prompted for credentials (fails before prompts)
+    assert "Email" not in result.stdout
+    # corrupt file left intact (not overwritten)
+    assert "oops" in config_path.read_text("utf-8")
+
+
 # --- help surface ----------------------------------------------------------
 
 

@@ -243,6 +243,13 @@ Stacked on PR2a. The auth commands now use the instance/credential split.
   surface recovery guidance ("Fix or remove … run: agh config set
   INSTANCE_URL") instead of a raw error/traceback. The corrupt file is left
   intact. (`logout` already recovered via `clear_credentials`.)
+- **Judgment Day Round 1 fix (extended recovery).** The same corrupt-config
+  recovery was missing from `login`, `sync`, and linked `pull`: each surfaced
+  raw invalid-config text instead of the shared guidance. `login` now catches
+  `ConfigCorruptError` before prompting (fails before any credential prompt);
+  `sync`/`pull` let `ConfigCorruptError` propagate from `_load_config_or_error`
+  and route it through `_fail_corrupt_config`. Regression tests cover corrupt
+  config on `login`, `sync`, and linked `pull --dry-run`.
 - **Dead code removed.** `save_config`/`_format_config` (no callers after the
   login rewrite) dropped from `config.py`. `AghConfig`/`normalize_instance_url`
   stay (used by `load_config`/`save_instance_url`, workspace pull/sync, tests).
@@ -256,8 +263,8 @@ Stacked on PR2a. The auth commands now use the instance/credential split.
 | 2b.3 | `tests/test_cli_login.py` (corrupt) | Unit | whoami/logout corrupt failing | passing | `load_config`→`ConfigCorruptError` |
 
 Test Summary:
-- Focused run (`test_cli_login.py` + `test_cli_help_map.py`): 39 passed.
-- Full suite: 523 passed, 1 skipped.
+- Focused run (`test_cli_login.py` + `test_cli_help_map.py` +
+  `test_workspace_sync.py` + `test_cli_pull.py`): 85 passed.
 - Validation: `ruff check` clean, `ruff format --check` clean, `pyright` on
   touched files 0 errors, `git diff --check` clean.
 
@@ -266,18 +273,34 @@ Test Summary:
 | File | Action | What Was Done |
 |------|--------|---------------|
 | `agh/cli/config.py` | Modified | `load_config` raises `ConfigCorruptError` on bad TOML; added `save_credentials`/`clear_credentials`; removed dead `save_config`/`_format_config`. |
-| `agh/cli/main.py` | Modified | Rewrote `login` (no `--url`); added `whoami`, `logout`; `_api_request` surfaces corrupt-config recovery; APP_HELP adds whoami/logout; imports trimmed. |
-| `tests/test_cli_login.py` | Modified | Rewrote login tests; added whoami/logout, trust-boundary-whoami, logout-corrupt, and whoami-corrupt (JD fix) tests + login-help test. |
+| `agh/cli/main.py` | Modified | Rewrote `login` (no `--url`); added `whoami`, `logout`; `_api_request` surfaces corrupt-config recovery; `login`/`sync`/`pull` route corrupt config to `_fail_corrupt_config`; APP_HELP adds whoami/logout; imports trimmed. |
+| `agh/cli/workspace_sync.py` | Modified | `_load_config_or_error` lets `ConfigCorruptError` propagate for recovery guidance. |
+| `agh/cli/workspace_pull.py` | Modified | `_load_config_or_error` lets `ConfigCorruptError` propagate for recovery guidance. |
+| `tests/test_cli_login.py` | Modified | Rewrote login tests; added whoami/logout, trust-boundary-whoami, logout-corrupt, whoami-corrupt, and login-corrupt (JD fix) tests + login-help test. |
 | `tests/test_cli_help_map.py` | Modified | Root map adds whoami/logout; `NOT_YET_IMPLEMENTED_COMMANDS` reduced to [target, link]. |
-| `openspec/changes/cli-ux-redesign/tasks.md` | Modified | 2b sub-tasks marked done. |
+| `tests/test_workspace_sync.py` | Modified | Added sync corrupt-config recovery regression test. |
+| `tests/test_cli_pull.py` | Modified | Added linked `pull --dry-run` corrupt-config recovery regression test. |
+| `openspec/changes/cli-ux-redesign/tasks.md` | Modified | 2b sub-tasks marked done; corrupt-config recovery scope extended to login/sync/pull. |
 
 ### Review surface accounting
 
 | Surface | Files | Changed lines | vs 400 budget |
 |---------|-------|---------------|---------------|
-| Runtime code | `agh/cli/config.py`, `agh/cli/main.py` | 129 (70+ / 59−) | under |
-| Tests | `test_cli_login.py`, `test_cli_help_map.py` | 408 (282+ / 126−) | — |
-| OpenSpec governance | `tasks.md`, `apply-progress.md` | additive docs | n/a (governance) |
+| Runtime code | `agh/cli/config.py`, `agh/cli/main.py`, `agh/cli/workspace_sync.py`, `agh/cli/workspace_pull.py` | 145 (84+ / 61−) | under |
+| Tests | `test_cli_login.py`, `test_cli_help_map.py`, `test_workspace_sync.py`, `test_cli_pull.py` | 496 (370+ / 126−) | over alone |
+| OpenSpec governance | `tasks.md`, `apply-progress.md` | 99 (93+ / 6−) | n/a (governance) |
+| **Full PR2b slice total** | | **740 (547+ / 193−)** | **over** |
+
+### Size disposition
+
+`size:exception` required. The full PR2b slice is **740 changed lines** vs its
+parent (`feat/cli-ux-config-instance`), exceeding the 400-line budget (it was
+611 before the Judgment Day Round 1 corrupt-config extension added runtime
+recovery + 3 regression tests). Splitting Phase 2 into config/auth/target
+reduced each slice's conceptual scope, but the login rewrite, whoami/logout,
+trust-boundary, and corrupt-config coverage plus the additive OpenSpec
+governance artifacts keep this slice over 400. Runtime code alone stays within
+budget; the overage is tests plus governance docs, not logic complexity.
 
 ### Out of scope (deferred)
 

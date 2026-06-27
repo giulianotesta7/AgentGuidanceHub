@@ -446,6 +446,8 @@ def pull(
     """Fetch the linked project pull-manifest and apply managed guidance blocks."""
     try:
         result = pull_workspace(dry_run=dry_run, force=force)
+    except ConfigCorruptError as exc:
+        _fail_corrupt_config(exc)
     except WorkspacePullError as exc:
         _fail(str(exc), code=exc.code)
 
@@ -811,6 +813,8 @@ def sync(
     """Match the selected git remote to an accessible AGH project and write .agh/project.toml."""
     try:
         result = sync_workspace(remote=remote, force=force)
+    except ConfigCorruptError as exc:
+        _fail_corrupt_config(exc)
     except WorkspaceSyncError as exc:
         _fail(str(exc), code=exc.code)
 
@@ -858,6 +862,8 @@ def login(
     """
     try:
         instance_url = load_instance_url()
+    except ConfigCorruptError as exc:
+        _fail_corrupt_config(exc)
     except ConfigError as exc:
         _fail(str(exc))
 
