@@ -1,9 +1,13 @@
 # Apply Progress: CLI UX Redesign
 
 Status: PR1 (Help / Root Infrastructure), PR2a (Instance Config), PR2b
-(Auth), PR2c (Target), PR3 (User / Project / Collection Vocabulary), and
-PR4 (Package Assignment UX) complete. PR1/PR2 were previously verified; PR3
-is verified and Judgment-Day approved; PR4 is ready for verify.
+(Auth), PR2c (Target), PR3 (User / Project / Collection Vocabulary), PR4
+(Package Assignment UX), PR5 (Skill / Link / Pull Cleanup), and PR6 (Docs /
+Changelog / Final Validation) complete. PR1/PR2 were previously verified; PR3
+is verified and Judgment-Day approved; PR4 is implemented + review-fix
+validated; PR5/PR6 are implemented + validated. All 25/25 tasks complete;
+change is archive-ready. Phase 6 had a Judgment Day / 4R fix round (recorded
+at the end of this file).
 
 ## Delivery
 
@@ -141,8 +145,8 @@ later slices:
   - [x] 2c target (PR2c) — DONE (this branch)
 - [x] Phase 3: User / Project / Collection vocabulary (PR3) — DONE (this batch)
 - [x] Phase 4: Package assignment UX (PR4) — DONE (this batch)
-- [ ] Phase 5: Skill / Link / Pull cleanup (PR5)
-- [ ] Phase 6: Docs / Changelog / Final validation (PR6)
+- [x] Phase 5: Skill / Link / Pull cleanup (PR5) — DONE
+- [x] Phase 6: Docs / Changelog / Final validation (PR6) — DONE (this batch)
 
 ## Phase 2a: Instance Config (PR2a) — DONE
 
@@ -821,3 +825,190 @@ RED/GREEN bug cycle. The production guidance string (`workspace is not linked;
 run `agh link` first`) was already in place; the test just did not pin it
 strongly enough. The strengthened assertion passes immediately on the existing
 implementation.
+
+## Phase 6: Docs / Changelog / Final Validation (PR6) — DONE
+
+Final stacked-to-main slice on a clean worktree from `origin/main` (`eaa6a0c`,
+PR3/PR4/PR5 merged). This slice aligns the user-facing docs and docs guidance
+test with the already-shipped CLI map, removes the redundant aggregate
+changelog fragment, and runs the final validation set. No runtime code changed.
+
+### Provenance and honest TDD note
+
+PR1-PR5 rewired the CLI (`sync`→`link`, `agent`→`target`, `config`/auth split,
+resource verbs, package-centric assignment, skill cleanup) but intentionally
+deferred the README/`README.es`/docs-test drift to Phase 6 (recorded in the
+Phase 5 "Deviations / Scope Decisions"). On entry, `tests/test_docs_guidance.py`
+pinned the OLD contract and the READMEs documented removed commands; the docs
+test passed only because it and the READMEs were mutually consistent (both
+old).
+
+This slice applies Strict TDD honestly to docs: the docs guidance test is the
+executable spec for README content, and the READMEs are the production
+artifact. The cycle is a genuine, execution-demonstrated RED→GREEN, not a
+classic runtime cycle.
+
+### What shipped (PR6)
+
+- **README.md + README.es.md updated to the final CLI map.** Quick start now
+  uses `agh config set` then `agh login --email/--token`, `agh link`,
+  `agh target set`, `agh pull`, `agh target`. The "How AGH works" workspace row,
+  the project/collection assignment blocks, the global-skills block, the
+  workspace-pull table, the exit-code `5` guidance, and the server-ops admin
+  block all use the new vocabulary. Project create/update use `--git-url`;
+  resource verbs are `describe`/`activate`/`deactivate`; token rotation is
+  `agh user token rotate USER_REF`; package assignment is
+  `package assign|activate|deactivate|unassign PACKAGE_REF (--project|--collection)`;
+  `skill install ... --target`; `Select the target for global skills:`. H2
+  contract preserved (unchanged H2 lists in both READMEs).
+- **Removed-command references purged.** No `agh sync`, `agh agent`,
+  top-level `agh token`, `agh config show`, `project package`/`collection
+  package` subgroups, `--repo-url`, `--position`, `skill remove`/`installed`/
+  `agent`, `user show`/`user delete`, or `project/collection get/delete` remain
+  in either README (grep-verified).
+- **Redundant aggregate changelog fragment removed.** A draft
+  `changelog.d/+cli-ux-redesign.breaking.md` rollup was removed as duplicative:
+  it restated the union of the per-slice `+cli-*.breaking.md` fragments already
+  shipped with PR1-PR5, so keeping it would emit duplicate release notes at
+  `towncrier build` time. Per agh-changelog rule 2 (one fragment per
+  user-facing work unit), the per-slice fragments are the canonical entries;
+  this docs-only reconciliation slice needs no fragment of its own
+  (`no-changelog-needed` applies at PR time if CI requires a skip).
+- **Docs guidance test repinned to the new map.** The README.md and Spanish
+  `expected` lists now assert the new commands (`config set/clear`, `link`,
+  `target set/clear`, `whoami`, `logout`, `user describe`, `user token rotate`,
+  `project describe`, `project member list`, `package
+  assign/activate/deactivate/unassign/describe`, `skill install ... --target`,
+  `Select the target for global skills:`) and drop assertions for removed
+  commands. Every structural string (install methods, lockfile, Docker,
+  headings, anchors) is preserved verbatim.
+
+### TDD Cycle Evidence
+
+| Task | Test File | Layer | Safety Net | RED | GREEN | TRIANGULATE | REFACTOR |
+|------|-----------|-------|------------|-----|-------|-------------|----------|
+| 6.1 | `tests/test_docs_guidance.py` (README lists) | Docs (assertion spec) | 13/13 | 2 failing (`test_readme_consolidates_guides_and_bookmarks`, `test_spanish_readme_mirrors_consolidated_guides`) after pinning new map vs unchanged READMEs | 13 passing after README updates | n/a (docs alignment, not branching logic) | n/a |
+| 6.1 | `README.md`, `README.es.md` | Docs (production artifact) | 13/13 | covered by the failing docs test | 13 passing | removed-command grep sweep + new-command pin coverage | mirrored EN↔ES structure |
+| 6.2 | `changelog.d/+cli-ux-redesign.breaking.md` (removed) | Docs (release note) | n/a | n/a (no runtime test; `towncrier check` is branch-CI authority) | aggregate removed as duplicative of per-slice `+cli-*.breaking.md` fragments | n/a | one fragment per work unit (agh-changelog rule 2); docs-only slice needs no fragment |
+| 6.3 | validation gates | n/a | 553/553 full suite | n/a | all gates pass (see Validation) | n/a | n/a |
+
+Test Summary:
+- New tests written: 0 (docs alignment repins an existing assertion spec; no
+  new runtime behavior).
+- Tests updated: `tests/test_docs_guidance.py` (README + Spanish expected
+  lists repinned to the new CLI map).
+- Safety net before RED: `/tmp/opencode/uvpkg/bin/uv run pytest tests/test_docs_guidance.py -q` → 13 passed.
+- RED: same command after the test repin → 2 failed, 11 passed.
+- GREEN: same command after the README updates → 13 passed.
+- `uv` is absent from PATH in this shell; all commands used
+  `/tmp/opencode/uvpkg/bin/uv` (`uv 0.11.25`).
+
+### Validation
+
+| Command | Result | Evidence |
+|---------|--------|----------|
+| `/tmp/opencode/uvpkg/bin/uv run pytest tests/test_docs_guidance.py -q` | ✅ Passed | 13 passed in 0.07s |
+| `/tmp/opencode/uvpkg/bin/uv run towncrier check` | ✅ Passed (limited) | "On origin/main branch, or no diffs, so no newsfragment required." — the worktree is uncommitted with no branch diff, so this is a sanity check only, not branch-CI proof; branch CI is the authority. Phase 6 adds no new fragment (the redundant aggregate was removed; the per-slice fragments are already on `main`). |
+| `/tmp/opencode/uvpkg/bin/uv run pytest -q` | ✅ Passed | 553 passed in 135.43s |
+| `/tmp/opencode/uvpkg/bin/uv run --with ruff ruff check .` | ✅ Passed | All checks passed |
+| `/tmp/opencode/uvpkg/bin/uv run --with ruff ruff format --check .` | ✅ Passed | 69 files already formatted |
+| `/tmp/opencode/uvpkg/bin/uv run --with pyright pyright agh tests` | ✅ Passed | 0 errors, 0 warnings, 0 informations |
+| `git diff --check` | ✅ Passed | No whitespace errors |
+
+### Files Changed (PR6)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `README.md` | Modified | Rewrote Quick start, How-AGH-works workspace row, project/collection assignment, global skills, workspace-pull table, exit codes, and server-ops admin blocks to the new CLI map; purged removed-command references. |
+| `README.es.md` | Modified | Mirrored the same CLI-map changes in Spanish. |
+| `tests/test_docs_guidance.py` | Modified | Repinned the README.md and Spanish expected lists to the new CLI map; preserved all structural strings and H2 contracts. |
+| `changelog.d/+cli-ux-redesign.breaking.md` | Removed | Draft aggregate rollup removed as duplicative of the per-slice `+cli-*.breaking.md` fragments (would emit duplicate release notes at `towncrier build`). |
+| `openspec/changes/cli-ux-redesign/tasks.md` | Modified | Phase 6 tasks marked complete. |
+| `openspec/changes/cli-ux-redesign/apply-progress.md` | Modified | Recorded this PR6 progress and validation evidence. |
+| `openspec/changes/cli-ux-redesign/verify-report.md` | Modified | Brought the durable story to an archive-ready state (25/25 tasks, Phase 6 verified). |
+
+### Review surface accounting
+
+| Surface | Files | Changed lines | vs 800 budget |
+|---------|-------|---------------|---------------|
+| Docs (production) | `README.md`, `README.es.md` | 129 (64+ / 65−) + 128 (65+ / 63−) | under |
+| Docs (test/spec) | `tests/test_docs_guidance.py` | 84 (38+ / 46−) | under |
+| **Docs subtotal** | | **341 (167+ / 174−)** | **well under 800** |
+| OpenSpec governance | `tasks.md`, `apply-progress.md`, `verify-report.md` | additive docs | n/a (governance) |
+
+### Size disposition
+
+Within the user-approved 800-line review budget. No runtime code changed in
+Phase 6; the entire slice is docs alignment + test repin + changelog dedup
+(aggregate fragment removed). Rollback stays per-slice (revert this PR only).
+
+### Out of scope
+
+- No runtime CLI changes (PR1-PR5 are merged and complete).
+- No `CHANGELOG.md` edit (release maintainers run `towncrier build`).
+- No commits, branches, PRs, tags, or releases (per session contract).
+- `.codegraph/` is absent from this clean worktree; nothing to exclude.
+
+## Phase 6 Judgment Day / 4R Fix Round — DONE
+
+A fresh audit + 4R + Judgment Day pass over the Phase 6 slice found four
+confirmed real blockers (no speculative refactors). All four were fixed
+minimally and honestly in this round; no runtime code changed.
+
+### What shipped
+
+- **`agh config` docs/tests mismatch (correctness).** `README.md`,
+  `README.es.md`, and `tests/test_docs_guidance.py` claimed `agh config`
+  shows masked credentials (`token = ****`). Real behavior (and the existing
+  green contract `tests/test_cli_login.py::test_config_set_then_show_and_clear_instance_url`,
+  which asserts `agh config` shows ONLY the instance URL, never `token` or
+  `email`) shows only `Instance URL: ...`. Aligned docs + docs-test to that
+  green runtime contract: READMEs now state `agh config` shows only the
+  instance URL, never the token; docs-test asserts `never the token` /
+  `nunca el token` instead of the false `token = ****`.
+- **`verify-report.md` contradiction (governance coherence).** Removed/rewrote
+  stale sections that still claimed Phases 5-6 are archive blockers while the
+  same file claimed archive-ready. The file is now internally consistent:
+  all 25/25 tasks complete, 0 remaining archive blockers, archive-ready.
+- **`apply-progress.md` review-size/evidence framing (honesty).** Fixed the
+  "Runtime + docs subtotal" label to "Docs subtotal" (no runtime changed in
+  Phase 6); recomputed the review-surface numbers from the real diff; stopped
+  overclaiming the Towncrier fragment as shipped evidence on an uncommitted
+  worktree (it is a sanity check only; branch CI is the authority).
+- **Aggregate vs per-slice changelog duplication (release-note dedup).**
+  Removed the draft `changelog.d/+cli-ux-redesign.breaking.md` aggregate: it
+  restated the union of the seven per-slice `+cli-*.breaking.md` fragments
+  already on `main`, so keeping it would emit duplicate release notes at
+  `towncrier build`. Per agh-changelog rule 2 (one fragment per user-facing
+  work unit), the per-slice fragments are canonical; this docs-only slice
+  needs no fragment of its own.
+
+### TDD note
+
+This round is docs/test reconciliation and governance coherence, not a
+runtime RED/GREEN cycle. The one correctness fix (`agh config` masking claim)
+aligns the docs + docs-test with an already-green runtime contract
+(`tests/test_cli_login.py` proves `agh config` shows only the instance URL);
+no runtime behavior changed, so there is no new runtime RED. The docs test
+itself (`tests/test_docs_guidance.py`) is the executable spec for README
+content and was re-run GREEN after the README corrections.
+
+### Validation (this fix round)
+
+Run with `/tmp/opencode/uvpkg/bin/uv` (`uv 0.11.25`); `uv` is not on PATH.
+
+- `pytest tests/test_docs_guidance.py tests/test_cli_login.py::test_config_set_then_show_and_clear_instance_url tests/test_cli_login.py::test_config_show_is_not_a_command -q` -> 15 passed.
+- `uv run towncrier check` -> passes (uncommitted worktree sanity check; no new fragment).
+- Grep sweep confirms no `token = ****` / "masks stored credentials" / "enmascara" false claims remain in either README.
+
+### Files Changed (Phase 6 fix round)
+
+| File | Action | What Was Done |
+|------|--------|---------------|
+| `README.md` | Modified | Corrected the false `agh config` masking claims to "shows only the instance URL, never the token". |
+| `README.es.md` | Modified | Mirrored the `agh config` correction in Spanish. |
+| `tests/test_docs_guidance.py` | Modified | Replaced the `token = ****` assertion with `never the token` / `nunca el token` to match real behavior. |
+| `changelog.d/+cli-ux-redesign.breaking.md` | Removed | Dropped the redundant aggregate fragment (per-slice fragments already cover every breaking change). |
+| `openspec/changes/cli-ux-redesign/tasks.md` | Modified | Task 6.2 updated to record the aggregate-removal decision. |
+| `openspec/changes/cli-ux-redesign/verify-report.md` | Modified | Resolved the Phase 5-6 blocker/archive-ready contradiction; updated aggregate references. |
+| `openspec/changes/cli-ux-redesign/apply-progress.md` | Modified | Recorded this fix round; fixed review-size/evidence framing. |

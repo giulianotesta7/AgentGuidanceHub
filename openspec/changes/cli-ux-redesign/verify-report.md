@@ -1,12 +1,14 @@
 # Verification Report
 
 **Change**: `cli-ux-redesign`
-**Slices covered**: Phase 3 / PR3 — User / Project / Collection Vocabulary (verified); Phase 4 / PR4 — Package Assignment UX (implemented + review-fix validated)
+**Slices covered**: Phase 3 / PR3 (verified); Phase 4 / PR4 (implemented + review-fix validated); Phase 5 / PR5 (implemented + validated in `apply-progress.md`); Phase 6 / PR6 (docs/changelog/final validation — this update)
 **Mode**: Strict TDD
 **Artifact store**: OpenSpec
 **Phase 3 verdict**: PASS
 **Phase 4 verdict**: IMPLEMENTED + REVIEW-FIX VALIDATED (no standalone re-verify ceremony; evidence recorded in `apply-progress.md` and refreshed in the Phase 4 Review-Fix Round below)
-**Overall change/archive readiness**: BLOCKED — Phases 5-6 remain intentionally unchecked and unverified.
+**Phase 5 verdict**: IMPLEMENTED + VALIDATED (evidence in `apply-progress.md` Phase 5 + cleanup section; no standalone verify ceremony)
+**Phase 6 verdict**: IMPLEMENTED + VALIDATED (docs alignment, changelog dedup, full gate set; evidence below and in `apply-progress.md` Phase 6)
+**Overall change/archive readiness**: READY — all 25/25 tasks complete and the full validation gate set passes. Archive ceremony (`sdd-archive`) remains an explicit orchestrator step.
 
 ## Scope Boundary
 
@@ -20,13 +22,14 @@ Phase 4 (Package Assignment UX) is implemented and its TDD evidence is recorded 
 verify ceremony; instead, a Phase 4 Review-Fix Round (4R findings) re-ran the
 focused + full validation after removing a redundant `GET /packages` round-trip
 and adding two focused tests. That evidence is recorded in this report's Phase 4
-Review-Fix Round section and is sufficient to treat Phase 4 as done-but-not-yet-
-re-verified for archive purposes; archive remains blocked by Phases 5-6.
+Review-Fix Round section and is sufficient to treat Phase 4 as done; Phases 5-6
+are now complete and validated, so the full change is archive-ready.
 
 Prior PR1/PR2 artifacts remain part of the cumulative branch history, but this
 verification does not re-adjudicate those slices beyond running the full current
 test suite. Phase 5 skill/link/pull cleanup and Phase 6 docs/final validation
-remain archive blockers.
+are complete and validated (evidence summarized in the Phase 5 + Phase 6
+Verification Summary below).
 
 The shell used for this verification does not have `uv` on `PATH`. All runtime
 evidence below uses the explicit working executable
@@ -39,12 +42,18 @@ evidence below uses the explicit working executable
 | Total tasks in change | 25 |
 | Completed tasks through Phase 3 | 16/25 |
 | Completed tasks through Phase 4 | 19/25 |
+| Completed tasks through Phase 5 | 22/25 |
+| Completed tasks through Phase 6 | 25/25 |
 | Phase 3 tasks complete | 3/3 |
 | Phase 4 tasks complete | 3/3 |
-| Remaining archive blockers | 6 unchecked tasks in Phases 5-6 |
+| Phase 5 tasks complete | 3/3 |
+| Phase 6 tasks complete | 3/3 |
+| Remaining archive blockers | 0 |
 | Phase 3 slice readiness | ✅ Ready (verified) |
 | Phase 4 slice readiness | ✅ Implemented + review-fix validated |
-| Full change archive readiness | ❌ Blocked until Phases 5-6 are implemented and verified |
+| Phase 5 slice readiness | ✅ Implemented + validated |
+| Phase 6 slice readiness | ✅ Implemented + validated (docs/changelog/final gates) |
+| Full change archive readiness | ✅ Ready for archive ceremony |
 
 ## Build & Tests Execution
 
@@ -93,8 +102,8 @@ counts above supersede it for the post-fix state.
 | Reference arguments use honest `USER_REF`, `PROJECT_REF`, and `COLLECTION_REF` wording | Focused 49-test run; `test_resource_help_uses_phase3_vocabulary_and_ref_metavars`; resolver tests in `test_cli_admin_commands.py`; source inspection of `*_refs.py` messages | ✅ COMPLIANT |
 | Legacy resource aliases are not part of supported behavior for this slice | Focused 49-test run; `test_legacy_resource_commands_are_not_supported`; resource help assertions omit `show`/`get`/`delete`; top-level `token` is unsupported | ✅ COMPLIANT for Phase 3 scope |
 | Package assignment UX | Phase 4 tasks 4.1-4.3 complete; `tests/test_cli_package_assignment.py` (46 focused PR4 tests); Phase 4 Review-Fix Round validation below | ✅ COMPLIANT (implemented + review-fix validated) |
-| Skill/link/pull cleanup | Phase 5 tasks 5.1-5.3 unchecked | ⏸ BLOCKER for full archive |
-| README/README.es final migration prose and final validation | Phase 6 tasks 6.1-6.3 unchecked | ⏸ BLOCKER for full archive |
+| Skill/link/pull cleanup | Phase 5 tasks 5.1-5.3 complete; `tests/test_cli_pull.py` + `test_cli_help_map.py` legacy-absence coverage; evidence in `apply-progress.md` Phase 5 | ✅ COMPLIANT (implemented + validated) |
+| README/README.es final migration prose and final validation | Phase 6 tasks 6.1-6.3 complete; `tests/test_docs_guidance.py` 13 passed; full gate set passes; evidence in `apply-progress.md` Phase 6 | ✅ COMPLIANT (implemented + validated) |
 
 ## TDD Compliance
 
@@ -147,7 +156,7 @@ smoke-only assertions, orphan empty checks, and type-only assertions used alone.
 | User token rotation is nested | `token_rotate` is registered under `user_token_app`; top-level `token` is absent from supported help/tests | ✅ Followed |
 | Project member list exists only if required | `GET /projects/{project_id}/members` was added in `agh/server/routes/projects.py` with admin-only access | ✅ Followed |
 | Align `*_REF` help/errors | `user_refs.py`, `project_refs.py`, and `collection_refs.py` use `USER_REF`, `PROJECT_REF`, and `COLLECTION_REF` wording | ✅ Followed |
-| Keep later package/skill/link/docs changes sliced | Phase 4 implemented + review-fix validated; Phase 5-6 remain sliced and unchecked | ✅ Followed |
+| Keep later package/skill/link/docs changes sliced | Phase 4 implemented + review-fix validated; Phase 5-6 implemented + validated | ✅ Followed |
 
 ## Files Changed in Phase 3 Worktree
 
@@ -173,16 +182,18 @@ smoke-only assertions, orphan empty checks, and type-only assertions used alone.
 - None for Phase 3.
 
 **WARNING**
-- Full `cli-ux-redesign` is not archive-ready. Phases 5-6 remain unchecked and
-  unverified; Phase 4 is implemented + review-fix validated but has not had a
-  standalone verify ceremony.
+- Phase 4 is implemented + review-fix validated but has not had a standalone
+  verify ceremony; its evidence lives in `apply-progress.md` and the Phase 4
+  Review-Fix Round section. This was a forward-looking caveat at Phase 3 verify
+  time; Phases 5-6 are now complete and validated, so it no longer blocks
+  archive.
 - `.codegraph/` is untracked and must not be committed.
 - `uv` is absent from `PATH` in this shell; verification used the explicit
   `/tmp/opencode/uvpkg/bin/uv` workaround and reports it openly.
 
 **SUGGESTION**
-- Keep Phase 5 focused on skill/link/pull cleanup only; do not mix Phase 6
-  docs/changelog into that review slice.
+- Phase 5 was kept focused on skill/link/pull cleanup only; Phase 6 docs/
+  changelog stayed in its own slice. This suggestion was followed.
 
 ## Phase 4 Review-Fix Round (4R findings)
 
@@ -242,6 +253,54 @@ this shell.
 | `openspec/changes/cli-ux-redesign/verify-report.md` | Modified | Brought the durable story to a coherent Phase 4 state using recorded Phase 4 evidence + this review-fix round. |
 | `openspec/changes/cli-ux-redesign/apply-progress.md` | Modified | Recorded this Phase 4 review-fix round. |
 
+## Phase 5 + Phase 6 Verification Summary
+
+Phases 5 and 6 did not receive standalone verify ceremonies. Their evidence is
+recorded in `apply-progress.md` (Phase 5 section, Phase 5 cleanup section, and
+Phase 6 section) and is summarized here for archive coherence.
+
+### Phase 5 / PR5 — Skill / Link / Pull Cleanup
+
+Implemented + validated. `link` replaces `sync`; `pull` help points to `link`;
+`skill` is reduced to `list`/`install` with `--target` target resolution
+(explicit → workspace → global → prompt → non-interactive error); `skill
+remove`/`installed`/`agent` are removed. Validation (recorded in
+`apply-progress.md`): focused run 138 passed; full suite 553 passed; ruff
+check/format clean; pyright 0 errors; `git diff --check` clean. The Phase 5
+cleanup batch additionally strengthened the `agh link` missing-link assertion
+in `tests/test_cli_pull.py`.
+
+### Phase 6 / PR6 — Docs / Changelog / Final Validation
+
+Implemented + validated. This is a docs-alignment + changelog + final-validation
+slice; no runtime code changed.
+
+- **Docs alignment (Strict TDD, honestly framed).** `tests/test_docs_guidance.py`
+  is the executable spec for README content; the READMEs are the production
+  artifact. The cycle was a genuine execution-demonstrated RED→GREEN:
+  - Safety net: `pytest tests/test_docs_guidance.py -q` → 13 passed.
+  - RED: repinned the README + Spanish expected lists to the new CLI map → 2
+    failed (`test_readme_consolidates_guides_and_bookmarks`,
+    `test_spanish_readme_mirrors_consolidated_guides`).
+  - GREEN: updated `README.md` + `README.es.md` to the new CLI map → 13 passed.
+  - Removed-command grep sweep confirms no `agh sync`/`agent`/top-level `token`/
+    `config show`/`project package`/`collection package`/`skill remove`/
+    `installed`/`agent`/`user show`/`project|collection get|delete`/`--repo-url`
+    remain in either README.
+  - H2 contract preserved (unchanged H2 lists in both READMEs).
+- **Changelog: no Phase 6 fragment.** The breaking changes are already covered by
+  the per-slice `+cli-*.breaking.md` fragments shipped with PR1-PR5. An aggregate
+  `+cli-ux-redesign.breaking.md` was drafted but removed as duplicative of those
+  per-slice fragments (agh-changelog rule 2: one fragment per user-facing work
+  unit). This docs-only reconciliation slice needs no fragment of its own;
+  `no-changelog-needed` applies at PR time if CI requires a skip. `towncrier check`
+  trivially passes on the uncommitted worktree (documented limitation; branch CI
+  is the authority).
+- **Full final validation gate set** (all pass; see the Phase 6 Validation table
+  in `apply-progress.md`): docs test 13 passed; full suite 553 passed; ruff
+  check clean; ruff format --check clean (69 files); pyright 0 errors;
+  `git diff --check` clean.
+
 ## Final Verdict
 
 **PASS for Phase 3 / PR3 User / Project / Collection Vocabulary.**
@@ -253,10 +312,17 @@ passes focused + full validation. It has not received a separate standalone
 verify ceremony; its evidence lives in `apply-progress.md` (Phase 4 section) and
 the Phase 4 Review-Fix Round section above.
 
-The overall `cli-ux-redesign` change remains **BLOCKED for archive** until
-Phases 5-6 are implemented, verified, and their task checkboxes are completed.
+**Phase 5 / PR5 Skill / Link / Pull Cleanup: IMPLEMENTED + VALIDATED.**
+**Phase 6 / PR6 Docs / Changelog / Final Validation: IMPLEMENTED + VALIDATED.**
+
+The overall `cli-ux-redesign` change is now **READY FOR ARCHIVE**: all 25/25
+tasks are complete, the full validation gate set passes, the READMEs and docs
+test reflect the shipped CLI map, and the breaking changes are documented in the
+per-slice `+cli-*.breaking.md` fragments (the redundant aggregate was removed).
+The archive ceremony (`sdd-archive`) is the next explicit orchestrator step.
 
 ## Next Recommended
 
-Proceed to Phase 5: Skill / Link / Pull Cleanup. Preserve the OpenSpec change as
-open and do not archive the full change yet.
+Proceed to `sdd-archive` for `cli-ux-redesign`: sync the delta spec into the
+`openspec/specs/` capabilities and move the change into `openspec/changes/archive/`.
+No further implementation work remains.

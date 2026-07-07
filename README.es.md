@@ -29,7 +29,7 @@ Usalo cuando el guidance de agentes necesita la misma disciplina que la infraest
 
 - **Centralizá el guidance**: publicá `AGENTS.md`, `CLAUDE.md` y archivos de skill compartidos una sola vez.
 - **Versioná cada cambio**: los packages son releases SemVer inmutables asignados a proyectos.
-- **Mantené repos determinísticos**: cada workspace registra `.agh/lock.toml` y aplica solo el target del agente elegido.
+- **Mantené repos determinísticos**: cada workspace registra `.agh/lock.toml` y aplica solo el target elegido.
 - **Operalo vos**: corré el server con Docker, SQLite y storage persistente en `/data`.
 
 ---
@@ -110,38 +110,39 @@ docker run --rm -v agh-data:/data busybox \
   cat /data/secrets/initial_owner_token
 ```
 
-Después logueate desde tu máquina:
+Configurá la URL de la instancia una vez y después logueate desde tu máquina:
 
 ```bash
-agh login \
-  --url <instance-url> \
-  --email owner@example.com \
-  --token "<initial-owner-token>"
+agh config set <instance-url>
+agh login --email owner@example.com --token "<initial-owner-token>"
 ```
 
-Chequeá la config guardada. AGH enmascara el token:
+`agh config` muestra la URL de la instancia configurada:
 
 ```bash
-agh config show
+agh config
 ```
+
+Usá `agh config clear` para borrar la URL de la instancia y `agh logout` para limpiar las credenciales sin cambiar la instancia.
 
 Creá un proyecto con la URL que los devs usan en sus remotes de git:
 
 ```bash
 agh project create "Agent Guidance Hub" \
-  --repo-url https://github.com/giulianotesta7/AgentGuidanceHub.git
+  --git-url https://github.com/giulianotesta7/AgentGuidanceHub.git
 ```
 
 Trabajá desde un repo conectado:
 
 ```bash
-agh sync
-agh agent select opencode # o: agh agent select claude
+agh link
+agh target set opencode # o: agh target set claude
 agh pull --dry-run
 agh pull
-agh agent
-agh agent show
+agh target
 ```
+
+`agh target` muestra el target elegido para este workspace; usá `agh target clear` para borrar la selección del workspace o agregá `--global` para manejar el default global.
 
 <a id="como-funciona-agh"></a>
 
@@ -161,7 +162,7 @@ Package author ── publish ──▶ AGH server ── assign ──▶ Proje
 |-------|----------|
 | Packages | Instrucciones compartidas, skills o ambas. Las versiones publicadas son inmutables. |
 | Proyectos | Un repo git más las versiones de packages que tiene que usar. |
-| Workspaces | Un repo local conectado con `agh sync`, un agente elegido y un lockfile commiteado. |
+| Workspaces | Un repo local conectado con `agh link`, un target elegido y un lockfile commiteado. |
 
 <details>
 <summary><strong>Autoría de packages</strong></summary>
@@ -240,30 +241,28 @@ Un proyecto es un registro de AGH conectado a un repo git.
 
 ```bash
 agh project create "Agent Guidance Hub" \
-  --repo-url https://github.com/giulianotesta7/AgentGuidanceHub.git
+  --git-url https://github.com/giulianotesta7/AgentGuidanceHub.git
 agh project list
-agh project get prj_...
+agh project describe prj_...
 agh project update prj_... --name "App API"
-agh project delete prj_...
+agh project deactivate prj_...
+agh project member list prj_...
 ```
 
-Asigna packages de forma interactiva o directa:
+Asigná packages a través de los comandos unificados de `package` con exactamente un scope de destino (`--project` o `--collection`):
 
 ```bash
-agh project package add
-agh project package add prj_...
-agh project package add prj_... acme/onboarding@latest
-agh project package add prj_... onboarding@1.0.0
-agh project package list prj_...
-agh project package update prj_... asn_... --package-ref acme/onboarding@1.0.0
-agh project package remove prj_... asn_...
+agh package assign acme/onboarding@latest --project prj_...
+agh package list --project prj_...
+agh package describe acme/onboarding@1.0.0
+agh package activate acme/onboarding@latest --project prj_...
+agh package deactivate acme/onboarding@latest --project prj_...
+agh package unassign acme/onboarding@latest --project prj_...
 ```
 
-- `agh project package add` guía la selección del proyecto, la selección de un package sin asignar y la confirmación.
-- `agh project package add <project>` omite la selección del proyecto, muestra packages sin asignar para ese proyecto y pide confirmación.
-- `agh project package add <project> <package-ref>` asigna directamente sin prompts, adecuado para scripts y CI.
+Las referencias de package aceptan `pkgv_...`, `domain/name@version` y `name@version` exactos. Los refs sin dominio tienen que matchear un único dominio de package; si no, AGH reporta un conflicto. Usá una versión exacta para fijar el proyecto. Usá `latest` con refs calificados por dominio cuando el proyecto tenga que resolver la versión publicada más nueva durante el pull. `package describe PACKAGE_REF@latest` resuelve a la versión SemVer más alta.
 
-`asn_...` identifica la asignación entre proyecto y package. Usa una versión exacta para fijar el proyecto. Usa `latest` cuando el proyecto tenga que resolver la versión publicada más nueva durante el pull.
+El server mantiene los ids de asignación internos: activate, deactivate y unassign buscan la asignación existente por ref de package más scope de destino. Cuando un package no está asignado, el error nombra el ref de package, el scope y el id del scope y sugiere `agh package list --<scope> <id>`.
 
 Durante el pull del workspace, AGH escribe la versión concreta y el checksum en `.agh/lock.toml`.
 
@@ -277,46 +276,43 @@ Las colecciones agrupan packages que contienen solo skills y que los miembros in
 ```bash
 agh collection create "Team Skills" --description "Skills de review compartidas"
 agh collection list
-agh collection get "Team Skills"
+agh collection describe "Team Skills"
 agh collection update "Team Skills" --name "Review Skills"
-agh collection delete "Review Skills"
+agh collection deactivate "Review Skills"
 ```
 
 Los comandos de colección que toman una referencia aceptan ids `col_...` o nombres exactos de colecciones activas. Los ids canónicos omiten la resolución por nombre; los nombres exactos se resuelven a través del endpoint de colecciones activas por nombre.
 
-Asigná packages que contienen solo skills a una colección:
+Asigná packages que contienen solo skills a una colección a través de los comandos unificados de `package` con `--collection`:
 
 ```bash
-agh collection package list "Team Skills"
-agh collection package add "Team Skills" acme/reviewer@latest
-agh collection package add "Team Skills" acme/reviewer@latest --position 2
-agh collection package update "Team Skills" casn_... --package-ref acme/reviewer@1.0.0 --inactive
-agh collection package remove "Team Skills" casn_...
+agh package assign acme/reviewer@latest --collection "Team Skills"
+agh package list --collection "Team Skills"
+agh package activate acme/reviewer@latest --collection "Team Skills"
+agh package deactivate acme/reviewer@latest --collection "Team Skills"
+agh package unassign acme/reviewer@latest --collection "Team Skills"
 ```
 
-`casn_...` identifica la asignación entre colección y package. Los packages de colección tienen que contener solo skills: AGH rechaza packages que tengan `instructions/AGENTS.md`, `instructions/CLAUDE.md` o ninguna skill, y el CLI muestra esa validación del servidor. Las referencias de package aceptan `pkgv_...`, `domain/name@version` y `name@version` exactos. A diferencia de `agh project package add`, `agh collection package add` requiere tanto la colección como la referencia del package: no hay selector interactivo, dado que solo el servidor puede validar packages de solo skills.
+Los packages de colección tienen que contener solo skills: AGH rechaza packages que tengan `instructions/AGENTS.md`, `instructions/CLAUDE.md` o ninguna skill, y el CLI muestra esa validación del servidor. Las referencias de package aceptan `pkgv_...`, `domain/name@version` y `name@version` exactos. La asignación requiere tanto la colección como la referencia del package: no hay selector interactivo, dado que solo el servidor puede validar packages de solo skills.
 
 </details>
 
 <details>
 <summary><strong>Skills globales</strong></summary>
 
-Las skills globales son herramientas respaldadas por colecciones e instaladas en el directorio global nativo del agente elegido. Una colección es un grupo administrado por AGH de packages que contienen solo skills y que el servidor pone a disposición; las skills globales están separadas de las asignaciones de packages del workspace.
+Las skills globales son herramientas respaldadas por colecciones e instaladas en el directorio global nativo del target elegido. Una colección es un grupo administrado por AGH de packages que contienen solo skills y que el servidor pone a disposición; las skills globales están separadas de las asignaciones de packages del workspace.
 
 | Comando | Qué hace |
 |---------|----------|
 | `agh skill list` | Lista skills disponibles desde colecciones activas. |
-| `agh skill install acme/commenting@latest reviewer` | Resuelve, descarga e instala `reviewer` globalmente para el agente seleccionado. |
-| `agh skill remove reviewer` | Elimina la instalación global del agente seleccionado o predeterminado. |
-| `agh skill installed` | Lista skills globales instaladas localmente desde el lock global de skills para el agente seleccionado o predeterminado. |
-| `agh skill agent show` | Muestra el agente predeterminado guardado para comandos de skills globales. |
-| `agh skill agent select opencode` | Guarda OpenCode como predeterminado para comandos de skills globales. |
-| `agh skill agent clear` | Borra el agente predeterminado para skills globales. |
+| `agh skill install acme/commenting@latest reviewer --target opencode` | Resuelve, descarga e instala `reviewer` globalmente para el target `opencode`. |
 
-Si no hay un predeterminado guardado y se omite `--agent`, AGH muestra este prompt:
+La resolución de target para `skill install` sigue este orden: un `--target` explícito, el target del workspace (`.agh-cache/preferences.toml`), el target global y después un prompt interactivo. En modo no interactivo, AGH sale con código `2` en lugar de promptear.
+
+Si no hay un target guardado y se omite `--target`, AGH muestra este prompt:
 
 ```text
-Select the agent for global skills:
+Select the target for global skills:
 ```
 
 Rutas de instalación:
@@ -324,7 +320,7 @@ Rutas de instalación:
 - Skills globales de OpenCode: `~/.config/opencode/skills`
 - Skills globales de Claude: `~/.claude/skills`
 
-El estado de skills globales es estado local del usuario bajo `XDG_STATE_HOME/agh` o `~/.local/state/agh`; no cambia el comportamiento de `agh pull` ni `.agh/lock.toml`. Si una eliminación informa un error de recuperación del filesystem, siga la salida del comando: puede hacer falta limpiar manualmente el lock y el archivo nativo de la skill antes de reintentar.
+El estado de skills globales es estado local del usuario bajo `XDG_STATE_HOME/agh` o `~/.local/state/agh`; no cambia el comportamiento de `agh pull` ni `.agh/lock.toml`.
 
 </details>
 
@@ -333,16 +329,16 @@ El estado de skills globales es estado local del usuario bajo `XDG_STATE_HOME/ag
 
 | Comando | Qué hace |
 |---------|----------|
-| `agh sync` | Matchea el remote de git con un proyecto AGH y escribe `.agh/project.toml`. |
-| `agh agent` / `agh agent show` | Muestra disponibilidad de Claude Code/OpenCode y la selección local actual. |
-| `agh agent select claude` | Selecciona Claude Code para este workspace. |
-| `agh agent select opencode` | Selecciona OpenCode para este workspace. |
-| `agh agent clear` | Borra la selección local del workspace. |
+| `agh link` | Matchea el remote de git con un proyecto AGH y escribe `.agh/project.toml`. |
+| `agh target` | Muestra la selección local de target actual. |
+| `agh target set opencode` | Selecciona OpenCode para este workspace. |
+| `agh target set claude` | Selecciona Claude Code para este workspace. |
+| `agh target clear` | Borra la selección local de target del workspace. |
 | `agh pull --dry-run` | Pide el plan al server sin escribir archivos del repo. |
-| `agh pull` | Aplica instrucciones y skills del agente elegido y escribe `.agh/lock.toml`. |
+| `agh pull` | Aplica instrucciones y skills del target elegido y escribe `.agh/lock.toml`. |
 | `agh pull --force` | Reemplaza bloques AGH o skill targets en conflicto. |
 
-No hay opción `both`. Si no hay agente seleccionado, `agh pull` interactivo pregunta cuál usar. Skip sale con código `2` y no escribe nada.
+No hay opción `both`. Si no hay target seleccionado, `agh pull` interactivo pregunta cuál usar. Skip sale con código `2` y no escribe nada.
 
 Los archivos de instrucciones usan bloques administrados:
 
@@ -388,7 +384,7 @@ No commitees estado local de cache:
 .agh-cache/
 ```
 
-AGH descarga packages en `.agh-cache/packages/` y guarda la elección de agente de cada dev en `.agh-cache/preferences.toml`. Si los skill targets son symlinks, un clone nuevo necesita `agh pull` para reconstruir el cache antes de que esos links resuelvan.
+AGH descarga packages en `.agh-cache/packages/` y guarda la elección de target de cada dev en `.agh-cache/preferences.toml`. Si los skill targets son symlinks, un clone nuevo necesita `agh pull` para reconstruir el cache antes de que esos links resuelvan.
 
 Exit codes:
 
@@ -396,10 +392,10 @@ Exit codes:
 |--------|-------------|
 | `0` | Éxito o sin cambios. |
 | `1` | Error runtime/API/download. |
-| `2` | Validación local, manifest inválido o selección de agente faltante/skipped. |
+| `2` | Validación local, manifest inválido o selección de target faltante/skipped. |
 | `3` | Conflicto. |
 | `4` | Error de autenticación/autorización. |
-| `5` | Workspace sin link; corré `agh sync`. |
+| `5` | Workspace sin link; corré `agh link`. |
 
 </details>
 
@@ -424,14 +420,20 @@ Comandos admin:
 ```bash
 agh user list
 agh user create user@example.com --role admin
+agh user describe user@example.com
 agh user update usr_... --role member
-agh user delete usr_...
-agh token rotate
-agh token reset usr_...
-agh config show
+agh user activate usr_...
+agh user deactivate usr_...
+agh user token rotate usr_...
+agh whoami
+agh logout
+agh config
+agh config clear
 ```
 
-`agh config show` enmascara el token guardado como `token = ****`.
+La rotación de tokens está anidada bajo `user`: `agh user token rotate USER_REF`.
+
+El CLI guarda las credenciales de login localmente; `agh config` muestra solo la URL de la instancia, nunca el token.
 
 El estado runtime vive bajo `/data`:
 

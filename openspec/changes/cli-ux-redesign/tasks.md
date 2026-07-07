@@ -99,6 +99,6 @@ Delivery strategy: ask-always (approved chained PRs)
 
 ## Phase 6: Docs / Changelog / Final Validation
 
-- [ ] 6.1 Update `README.md` and `README.es.md` with final CLI map; preserve H2 contract.
-- [ ] 6.2 Create `changelog.d/+cli-ux-redesign.breaking.md` summarizing the breaking CLI redesign.
-- [ ] 6.3 Verify: `uv run pytest tests/test_docs_guidance.py -q`, `uv run towncrier check`, `uv run pytest -q`, and `git diff --check`.
+- [x] 6.1 Update `README.md` and `README.es.md` with final CLI map; preserve H2 contract.
+- [x] 6.2 Changelog decision for Phase 6: removed the aggregate `changelog.d/+cli-ux-redesign.breaking.md` as duplicative of the per-slice `+cli-*.breaking.md` fragments (one fragment per work unit per agh-changelog rule 2; the docs-only slice needs no fragment of its own).
+- [x] 6.3 Verify: `uv run pytest tests/test_docs_guidance.py -q`, `uv run towncrier check`, `uv run pytest -q`, and `git diff --check`.
