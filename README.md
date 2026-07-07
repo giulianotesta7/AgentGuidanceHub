@@ -29,7 +29,7 @@ Use it when agent guidance needs the same discipline as infrastructure: reproduc
 
 - **Centralize guidance**: publish shared `AGENTS.md`, `CLAUDE.md`, and skill files once.
 - **Version every change**: packages are immutable SemVer releases assigned to projects.
-- **Keep repos deterministic**: each workspace records `.agh/lock.toml` and applies only the selected agent target.
+- **Keep repos deterministic**: each workspace records `.agh/lock.toml` and applies only the selected target.
 - **Run it yourself**: host the server with Docker, SQLite, and persistent `/data` storage.
 
 ---
@@ -103,38 +103,39 @@ docker run --rm -v agh-data:/data busybox \
   cat /data/secrets/initial_owner_token
 ```
 
-Then log in from your machine:
+Configure the instance URL once, then log in from your machine:
 
 ```bash
-agh login \
-  --url <instance-url> \
-  --email owner@example.com \
-  --token "<initial-owner-token>"
+agh config set <instance-url>
+agh login --email owner@example.com --token "<initial-owner-token>"
 ```
 
-Check the saved config. AGH masks the token:
+`agh config` shows the configured instance URL:
 
 ```bash
-agh config show
+agh config
 ```
+
+Use `agh config clear` to remove the instance URL, and `agh logout` to clear stored credentials without changing the instance.
 
 Create a project with the repo URL developers use in git remotes:
 
 ```bash
 agh project create "Agent Guidance Hub" \
-  --repo-url https://github.com/giulianotesta7/AgentGuidanceHub.git
+  --git-url https://github.com/giulianotesta7/AgentGuidanceHub.git
 ```
 
 Work from a linked repo:
 
 ```bash
-agh sync
-agh agent select opencode # or: agh agent select claude
+agh link
+agh target set opencode # or: agh target set claude
 agh pull --dry-run
 agh pull
-agh agent
-agh agent show
+agh target
 ```
+
+`agh target` shows the selected target for this workspace; use `agh target clear` to remove the workspace selection or add `--global` to manage the global default.
 
 ## How AGH works
 
@@ -152,7 +153,7 @@ Package author ── publish ──▶ AGH server ── assign ──▶ Proje
 |-------|--------------|
 | Packages | Shared instructions, skills, or both. Published versions are immutable. |
 | Projects | One git repository plus the package versions it should use. |
-| Workspaces | A local repo linked with `agh sync`, one selected agent, and a committed lockfile. |
+| Workspaces | A local repo linked with `agh link`, one selected target, and a committed lockfile. |
 
 <details>
 <summary><strong>Package authoring</strong></summary>
@@ -231,32 +232,30 @@ A project is an AGH record linked to one git repository.
 
 ```bash
 agh project create "Agent Guidance Hub" \
-  --repo-url https://github.com/giulianotesta7/AgentGuidanceHub.git
+  --git-url https://github.com/giulianotesta7/AgentGuidanceHub.git
 agh project list
-agh project get prj_...
+agh project describe prj_...
 agh project update prj_... --name "App API"
-agh project delete prj_...
+agh project deactivate prj_...
+agh project member list prj_...
 ```
 
 Project commands that take a project reference accept `prj_...` ids or exact project names. All-digit values are treated as ids, and project names cannot contain only digits.
 
-Assign packages interactively or directly:
+Assign packages through the unified `package` commands with exactly one target scope (`--project` or `--collection`):
 
 ```bash
-agh project package add
-agh project package add prj_...
-agh project package add prj_... acme/onboarding@latest
-agh project package add prj_... onboarding@1.0.0
-agh project package list prj_...
-agh project package update prj_... asn_... --package-ref acme/onboarding@1.0.0
-agh project package remove prj_... asn_...
+agh package assign acme/onboarding@latest --project prj_...
+agh package list --project prj_...
+agh package describe acme/onboarding@1.0.0
+agh package activate acme/onboarding@latest --project prj_...
+agh package deactivate acme/onboarding@latest --project prj_...
+agh package unassign acme/onboarding@latest --project prj_...
 ```
 
-- `agh project package add` guides you through project selection, unassigned package selection, and confirmation.
-- `agh project package add <project>` skips project selection, shows unassigned packages for that project, and asks for confirmation.
-- `agh project package add <project> <package-ref>` assigns directly without prompts, which fits scripts and CI.
+Package inputs accept `pkgv_...`, `domain/name@version`, and exact `name@version` refs. No-domain refs must match a single package domain, otherwise AGH reports a conflict. Use an exact version to pin the project. Use `latest` with domain-qualified refs when the project should resolve to the newest published version during pull. `package describe PACKAGE_REF@latest` resolves to the highest SemVer version.
 
-`asn_...` identifies the project-to-package assignment. Package inputs accept `pkgv_...`, `domain/name@version`, and exact `name@version` refs. No-domain refs must match a single package domain, otherwise AGH reports a conflict. Use an exact version to pin the project. Use `latest` with domain-qualified refs when the project should resolve to the newest published version during pull.
+The server keeps assignment ids internal: activate, deactivate, and unassign look up the existing assignment by package ref plus target scope. When a package is not assigned, the failure names the package ref, scope, and scope id and suggests `agh package list --<scope> <id>`.
 
 During workspace pull, AGH writes the resolved concrete version and checksum to `.agh/lock.toml`.
 
@@ -270,46 +269,43 @@ Collections group skill-only packages that members install through `agh skill ..
 ```bash
 agh collection create "Team Skills" --description "Shared review skills"
 agh collection list
-agh collection get "Team Skills"
+agh collection describe "Team Skills"
 agh collection update "Team Skills" --name "Review Skills"
-agh collection delete "Review Skills"
+agh collection deactivate "Review Skills"
 ```
 
 Collection commands that take a collection reference accept `col_...` ids or exact active collection names. Canonical ids skip name resolution; exact names resolve through the active-collection by-name endpoint.
 
-Assign skill-only packages to a collection:
+Assign skill-only packages to a collection through the unified `package` commands with `--collection`:
 
 ```bash
-agh collection package list "Team Skills"
-agh collection package add "Team Skills" acme/reviewer@latest
-agh collection package add "Team Skills" acme/reviewer@latest --position 2
-agh collection package update "Team Skills" casn_... --package-ref acme/reviewer@1.0.0 --inactive
-agh collection package remove "Team Skills" casn_...
+agh package assign acme/reviewer@latest --collection "Team Skills"
+agh package list --collection "Team Skills"
+agh package activate acme/reviewer@latest --collection "Team Skills"
+agh package deactivate acme/reviewer@latest --collection "Team Skills"
+agh package unassign acme/reviewer@latest --collection "Team Skills"
 ```
 
-`casn_...` identifies the collection-to-package assignment. Collection packages must be skill-only: AGH rejects packages that contain `instructions/AGENTS.md`, `instructions/CLAUDE.md`, or no skills, and the CLI surfaces that server validation. Package inputs accept `pkgv_...`, `domain/name@version`, and exact `name@version` refs. Unlike `agh project package add`, `agh collection package add` requires both the collection and the package reference — there is no interactive picker, since only the server can validate skill-only packages.
+Collection packages must be skill-only: AGH rejects packages that contain `instructions/AGENTS.md`, `instructions/CLAUDE.md`, or no skills, and the CLI surfaces that server validation. Package inputs accept `pkgv_...`, `domain/name@version`, and exact `name@version` refs. Assignment requires both the collection and the package reference; there is no interactive picker, since only the server can validate skill-only packages.
 
 </details>
 
 <details>
 <summary><strong>Global skills</strong></summary>
 
-Global skills are collection-backed tools installed into the selected agent's native user-level skill directory. A collection is an AGH-managed group of skill-only packages made available by the server; global skills are separate from workspace package assignments.
+Global skills are collection-backed tools installed into the selected target's native user-level skill directory. A collection is an AGH-managed group of skill-only packages made available by the server; global skills are separate from workspace package assignments.
 
 | Command | What it does |
 |---------|--------------|
 | `agh skill list` | Lists skills available from active collections. |
-| `agh skill install acme/commenting@latest reviewer` | Resolves, downloads, and installs `reviewer` globally for the selected agent. |
-| `agh skill remove reviewer` | Removes the global install for the selected or default agent. |
-| `agh skill installed` | Lists locally installed global skills from the global-skill lock for the selected or default agent. |
-| `agh skill agent show` | Shows the saved default agent for global skill commands. |
-| `agh skill agent select opencode` | Saves OpenCode as the default for global skill commands. |
-| `agh skill agent clear` | Clears the global skill default agent. |
+| `agh skill install acme/commenting@latest reviewer --target opencode` | Resolves, downloads, and installs `reviewer` globally for the `opencode` target. |
 
-If no default is saved and `--agent` is omitted, AGH prompts with:
+Target resolution for `skill install` follows this order: an explicit `--target`, the workspace target (`.agh-cache/preferences.toml`), the global target, then an interactive prompt. In non-interactive mode AGH exits with code `2` instead of prompting.
+
+If no target is saved and `--target` is omitted, AGH prompts with:
 
 ```text
-Select the agent for global skills:
+Select the target for global skills:
 ```
 
 Install paths:
@@ -317,7 +313,7 @@ Install paths:
 - OpenCode global skills: `~/.config/opencode/skills`
 - Claude global skills: `~/.claude/skills`
 
-Global skill state is local user state under `XDG_STATE_HOME/agh` or `~/.local/state/agh`; it does not change workspace pull behavior or `.agh/lock.toml`. If a remove operation reports a filesystem recovery error, follow the command output: the lock and native skill file may need manual cleanup before retrying.
+Global skill state is local user state under `XDG_STATE_HOME/agh` or `~/.local/state/agh`; it does not change workspace pull behavior or `.agh/lock.toml`.
 
 </details>
 
@@ -326,16 +322,16 @@ Global skill state is local user state under `XDG_STATE_HOME/agh` or `~/.local/s
 
 | Command | What it does |
 |---------|--------------|
-| `agh sync` | Matches the git remote to an AGH project and writes `.agh/project.toml`. |
-| `agh agent` / `agh agent show` | Shows Claude Code/OpenCode availability and the current local selection. |
-| `agh agent select claude` | Selects Claude Code for this workspace. |
-| `agh agent select opencode` | Selects OpenCode for this workspace. |
-| `agh agent clear` | Removes the local workspace agent selection. |
+| `agh link` | Matches the git remote to an AGH project and writes `.agh/project.toml`. |
+| `agh target` | Shows the current local target selection. |
+| `agh target set opencode` | Selects OpenCode for this workspace. |
+| `agh target set claude` | Selects Claude Code for this workspace. |
+| `agh target clear` | Removes the local workspace target selection. |
 | `agh pull --dry-run` | Fetches the server plan without writing repo files. |
-| `agh pull` | Applies instructions and skills for the selected agent and writes `.agh/lock.toml`. |
+| `agh pull` | Applies instructions and skills for the selected target and writes `.agh/lock.toml`. |
 | `agh pull --force` | Replaces conflicted AGH blocks or skill targets. |
 
-There is no `both` option. If no agent is selected, interactive `agh pull` asks which agent to use. Skip exits with code `2` and writes nothing.
+There is no `both` option. If no target is selected, interactive `agh pull` asks which target to use. Skip exits with code `2` and writes nothing.
 
 Instruction files use managed blocks:
 
@@ -381,7 +377,7 @@ Do not commit local cache state:
 .agh-cache/
 ```
 
-AGH downloads packages to `.agh-cache/packages/` and stores each developer's agent choice in `.agh-cache/preferences.toml`. If skill targets are symlinks, a fresh clone needs `agh pull` to rebuild the cache before those links resolve.
+AGH downloads packages to `.agh-cache/packages/` and stores each developer's target choice in `.agh-cache/preferences.toml`. If skill targets are symlinks, a fresh clone needs `agh pull` to rebuild the cache before those links resolve.
 
 Exit codes:
 
@@ -389,10 +385,10 @@ Exit codes:
 |------|---------|
 | `0` | Success or no changes. |
 | `1` | Runtime/API/download failure. |
-| `2` | Local validation, malformed manifest, or missing/skipped agent selection. |
+| `2` | Local validation, malformed manifest, or missing/skipped target selection. |
 | `3` | Conflict. |
 | `4` | Authentication/authorization failure. |
-| `5` | Workspace is not linked; run `agh sync`. |
+| `5` | Workspace is not linked; run `agh link`. |
 
 </details>
 
@@ -417,17 +413,20 @@ Admin commands:
 ```bash
 agh user list
 agh user create user@example.com --role admin
-agh user show user@example.com
+agh user describe user@example.com
 agh user update usr_... --role member
-agh user delete usr_...
-agh token rotate
-agh token reset usr_...
-agh config show
+agh user activate usr_...
+agh user deactivate usr_...
+agh user token rotate usr_...
+agh whoami
+agh logout
+agh config
+agh config clear
 ```
 
-User commands that take a user reference accept `usr_...` ids or exact emails.
+User commands that take a user reference accept `usr_...` ids or exact emails. Token rotation is nested under `user`: `agh user token rotate USER_REF`.
 
-`agh config show` masks the saved token as `token = ****`.
+The CLI stores login credentials locally for authentication; `agh config` shows only the instance URL, never the token.
 
 Runtime state lives under `/data`:
 
